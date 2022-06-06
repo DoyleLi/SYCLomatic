@@ -79,6 +79,9 @@ jobs:
         run: |
           cd c2s.src/build
           ninja check-clang-c2s
+          CUDA_PATH=/rdrive/ref/cuda/lin/cuda-8.0 ninja check-clang-c2s
+          CUDA_PATH=/rdrive/ref/cuda/lin/cuda-9.2 ninja check-clang-c2s
+          CUDA_PATH=/rdrive/ref/cuda/lin/cuda-10.2 ninja check-clang-c2s
 
   linux-test:
     name: linux-test-${{ matrix.test_suite }}-cpu
