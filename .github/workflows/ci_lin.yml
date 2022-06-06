@@ -101,7 +101,7 @@ jobs:
     needs: [linux-build-lit]
     if: |
       always() &&
-      needs.linux-build-lit.outputs.build_success == 'true'
+      needs.linux-build-lit.outputs.build_success == 'false'
     strategy:
       fail-fast: false
       matrix:
