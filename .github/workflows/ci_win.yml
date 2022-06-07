@@ -13,7 +13,7 @@ env:
 jobs:
   windows-build-lit:
     name: windows-build-lit
-    runs-on: win_build_sc
+    runs-on: self-hosted
     outputs:
       build_success: ${{ steps.Echo-Build-Success.outputs.build_success }}
     strategy:
@@ -115,7 +115,7 @@ jobs:
 
   windows-test:
     name: windows-test-${{ matrix.test_suite }}-cpu
-    runs-on: win_build_sc
+    runs-on: self-hosted
     needs: [windows-build-lit]
     if: |
       always() &&
