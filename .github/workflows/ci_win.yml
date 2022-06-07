@@ -89,6 +89,14 @@ jobs:
         #    name: SYCLomatic_Win_${{ github.sha }}
         #    path: c2s_obj.7z 
 
+      - name: Set_CUDA11.6
+        if: |
+          always() &&
+          steps.Echo-Build-Success.outputs.build_success == 'true'
+        run: |
+          echo "CUDA_PATH=L:/ref/cuda/win/v11.6" >> $GITHUB_ENV
+        shell: bash
+
       - name: Lit
         if: |
           always() &&
