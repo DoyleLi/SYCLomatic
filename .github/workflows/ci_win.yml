@@ -90,13 +90,11 @@ jobs:
         #    path: c2s_obj.7z 
 
       - name: Set_CUDA11.6
-        env:
-          CUDA_DEP_PATH: ${{ secrets.CUDA_DEP_PATH_WIN }}
         if: |
           always() &&
           steps.Echo-Build-Success.outputs.build_success == 'true'
         run: |
-          echo "CUDA_PATH=$CUDA_DEP_PATH/v11.6" >> $GITHUB_ENV
+          echo "CUDA_PATH=$CUDAROOT/v11.6" >> $GITHUB_ENV
         shell: bash
 
       - name: Lit
@@ -109,13 +107,11 @@ jobs:
         shell: bash
 
       - name: Set_CUDA8.0
-        env:
-          CUDA_DEP_PATH: ${{ secrets.CUDA_DEP_PATH_WIN }}
         if: |
           always() &&
           steps.Echo-Build-Success.outputs.build_success == 'true'
         run: |
-          echo "CUDA_PATH=$CUDA_DEP_PATH/v8.0" >> $GITHUB_ENV
+          echo "CUDA_PATH=$CUDAROOT/v8.0" >> $GITHUB_ENV
         shell: bash
 
       - name: Lit_CUDA8.0
@@ -128,13 +124,11 @@ jobs:
         shell: bash
 
       - name: Set_CUDA9.2
-        env:
-          CUDA_DEP_PATH: ${{ secrets.CUDA_DEP_PATH_WIN }}
         if: |
           always() &&
           steps.Echo-Build-Success.outputs.build_success == 'true'
         run: |
-          echo "CUDA_PATH=$CUDA_DEP_PATH/v9.2" >> $GITHUB_ENV
+          echo "CUDA_PATH=$CUDAROOT/v9.2" >> $GITHUB_ENV
         shell: bash
           
       - name: Lit_CUDA9.2
@@ -146,13 +140,11 @@ jobs:
           ninja check-clang-c2s -j8
       
       - name: Set_CUDA10.2
-        env:
-          CUDA_DEP_PATH: ${{ secrets.CUDA_DEP_PATH_WIN }}
         if: |
           always() &&
           steps.Echo-Build-Success.outputs.build_success == 'true'
         run: |
-          echo "CUDA_PATH=$CUDA_DEP_PATH/v10.2" >> $GITHUB_ENV
+          echo "CUDA_PATH=$CUDAROOT/v10.2" >> $GITHUB_ENV
         shell: bash
 
       - name: Lit_CUDA10.2
