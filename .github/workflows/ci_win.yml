@@ -23,22 +23,6 @@ jobs:
       - uses: actions/checkout@v2
         with:
           path: c2s.src
-      - name: Checkout Test Repo
-        #uses: actions/checkout@v2
-        #with:
-        #  repository: 
-        #  path: test_repo
-        run: |
-          if exist test_repo rd /s /q test_repo
-          git clone https://$FACELESS_TOKEN@github.com/oneapi-src/SYCLomatic-test.git test_repo -b SYCLomatic
-        shell: cmd 
-
-      - name: Cleanup Workspace
-        run: |
-          if exist c2s.obj rd /s /q c2s.obj
-          if exist c2s.src/build rd /s /q c2s.src/build
-        shell: cmd
-
       - name: Process ENV
         id: process_env
         run: |
@@ -50,53 +34,6 @@ jobs:
 
       - name: Prepare Env
         uses: ./c2s.src/devops/actions/prepare_env_win
-
-      - name: Configure
-        timeout-minutes: 120
-        run: |
-          cd c2s.src
-          mkdir build
-          cd build
-          cmake \
-            -G Ninja \
-            -DLLVM_ENABLE_PROJECTS="clang"  \
-            -DCMAKE_COLOR_MAKEFILE=0 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" \
-            -DLLVM_ENABLE_TERMINFO=OFF  \
-            -DCMAKE_C_COMPILER="$DPCPP_INSTALL_PREFIX/bin/icx.exe"  \
-            -DCMAKE_CXX_COMPILER="$DPCPP_INSTALL_PREFIX/bin/icx.exe"  \
-            -DCMAKE_INSTALL_PREFIX=$PWD/../../c2s.obj  \
-            ../llvm
-        shell: bash
-
-      - name: Build
-        timeout-minutes: 120
-        run: |
-          cd c2s.src/build
-          ninja install-c2s
-        shell: bash
-
-      - id: Echo-Build-Success
-        run: echo "::set-output name=build_success::true"
-      - name: Pack Build
-        shell: cmd
-        run: |
-          C:\7-Zip\7z.exe a c2s_obj.7z c2s.obj
-      - name: Upload Build
-        uses: actions/upload-artifact@v1
-        with:
-          name: SYCLomatic_Win_${{ github.sha }}
-          path: c2s_obj.7z 
-
-      - name: Lit
-        if: |
-          always() &&
-          steps.Echo-Build-Success.outputs.build_success == 'true'
-        run: |
-          cd c2s.src/build
-          ninja check-clang-c2s -j8
-        shell: bash
 
       - name: Set_CUDA_Env8.0
         if: |
@@ -112,7 +49,7 @@ jobs:
           steps.Echo-Build-Success.outputs.build_success == 'true'
         run: |
           cd c2s.src/build
-          if exist tools/clang/test/dpct rd /s /q tools/clang/test/dpct
+          rm -r -fo tools/clang/test/dpct
           ninja check-clang-c2s -j8
         shell: bash
 
@@ -130,7 +67,7 @@ jobs:
           steps.Echo-Build-Success.outputs.build_success == 'true'
         run: |
           cd c2s.src/build
-          if exist tools/clang/test/dpct rd /s /q tools/clang/test/dpct
+          rm -r -fo tools/clang/test/dpct
           ninja check-clang-c2s -j8
       
       - name: Set_CUDA_Env10.2
@@ -147,7 +84,7 @@ jobs:
           steps.Echo-Build-Success.outputs.build_success == 'true'
         run: |
           cd c2s.src/build
-          if exist tools/clang/test/dpct rd /s /q tools/clang/test/dpct
+          rm -r -fo tools/clang/test/dpct
           ninja check-clang-c2s -j8
      
   
