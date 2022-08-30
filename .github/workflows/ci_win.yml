@@ -34,6 +34,8 @@ jobs:
 
       - name: Prepare Env
         uses: ./c2s.src/devops/actions/prepare_env_win
+      - id: Echo-Build-Success
+        run: echo "::set-output name=build_success::true"
 
       - name: Set_CUDA_Env8.0
         if: |
