@@ -50,7 +50,8 @@ jobs:
           always() &&
           steps.Echo-Build-Success.outputs.build_success == 'true'
         run: |
-          rm -r -fo c2s.src
+          Remove-Item -Recurse -Force -Path c2s.src/clang
+          Remove-Item -Recurse -Force -Path c2s.src/lld
         shell: bash
 
       
