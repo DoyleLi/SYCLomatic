@@ -141,6 +141,7 @@ void PPCSubtarget::initializeEnvironment() {
   IsISA2_07 = false;
   IsISA3_0 = false;
   IsISA3_1 = false;
+  IsISAFuture = false;
   UseLongCalls = false;
   SecurePlt = false;
   VectorsUseTwoUnits = false;
@@ -148,6 +149,7 @@ void PPCSubtarget::initializeEnvironment() {
   UsePPCPostRASchedStrategy = false;
   PairedVectorMemops = false;
   PredictableSelectIsExpensive = false;
+  HasFastMFLR = false;
   HasModernAIXAs = false;
   IsAIX = false;
 

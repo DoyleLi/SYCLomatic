@@ -377,7 +377,8 @@ public:
   std::set<HelperFeatureEnum> getHelperFeatureSet() { return HelperFeatureSet; }
 
   virtual ~ExprAnalysis() = default;
-
+  SourceLocation CallSpellingBegin;
+  SourceLocation CallSpellingEnd;
 private:
   SourceLocation getExprLocation(SourceLocation Loc);
   size_t getOffset(SourceLocation Loc) {
@@ -615,6 +616,7 @@ protected:
   }
 
   void analyzeExpr(const CXXConstructExpr *Ctor);
+  void analyzeExpr(const CXXTemporaryObjectExpr *Temp);
   void analyzeExpr(const CXXUnresolvedConstructExpr *Ctor);
   void analyzeExpr(const MemberExpr *ME);
   void analyzeExpr(const UnaryExprOrTypeTraitExpr *UETT);
@@ -628,6 +630,10 @@ protected:
   void analyzeExpr(const IfStmt *IS);
   void analyzeExpr(const DeclStmt *DS);
   void analyzeExpr(const ConstantExpr *CE);
+  void analyzeExpr(const IntegerLiteral *IL);
+  void analyzeExpr(const InitListExpr *ILE);
+
+  void removeCUDADeviceAttr(const LambdaExpr *LE);
 
   inline void analyzeType(const TypeSourceInfo *TSI,
                           const Expr *CSCE = nullptr) {
@@ -747,6 +753,11 @@ public:
     CallSpellingEnd = CallSpellingBegin.getLocWithOffset(LocInfo.second);
   }
 
+  inline void setCallSpelling(SourceLocation Begin, SourceLocation End) {
+    CallSpellingBegin = Begin;
+    CallSpellingEnd = End;
+  }
+
   std::string getRewriteString();
 
   std::pair<SourceLocation, SourceLocation> getLocInCallSpelling(const Expr *E);
@@ -769,16 +780,14 @@ protected:
 
 private:
   static const std::string &getDefaultArgument(const Expr *E);
-  SourceLocation CallSpellingBegin;
-  SourceLocation CallSpellingEnd;
   using DefaultArgMapTy = std::map<const Expr *, std::string>;
   static DefaultArgMapTy DefaultArgMap;
 };
 
 class KernelArgumentAnalysis : public ArgumentAnalysis {
 public:
-  bool IsRedeclareRequired;
-  bool IsPointer;
+  bool IsRedeclareRequired = false;
+  bool IsPointer = false;
   bool TryGetBuffer = false;
   bool IsDoublePointer = false;
 
@@ -801,8 +810,10 @@ private:
     ExprAnalysis::analyzeExpr(Arg);
   }
   inline void analyzeExpr(const UnaryOperator *Arg);
+  inline void analyzeExpr(const CXXTemporaryObjectExpr *Temp);
   inline void analyzeExpr(const CXXDependentScopeMemberExpr *Arg);
   inline void analyzeExpr(const MaterializeTemporaryExpr *MTE);
+  inline void analyzeExpr(const LambdaExpr *LE);
 
   bool isNullPtr(const Expr *);
 

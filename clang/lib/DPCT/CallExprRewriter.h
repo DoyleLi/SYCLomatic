@@ -11,6 +11,7 @@
 
 #include "Diagnostics.h"
 
+
 namespace clang {
 namespace dpct {
 
@@ -28,8 +29,8 @@ template <class... MsgArgs> class UnsupportFunctionRewriter;
 
 /*
 Factory usage example:
-using BinaryOperatorExprRewriterFactory =
-    CallExprRewriterFactory<BinaryOperatorExprRewriter, BinaryOperatorKind>;
+using FuncCallExprRewriterFactory =
+    CallExprRewriterFactory<FuncCallExprRewriter, std::string>;
 */
 /// Base class in abstract factory pattern
 class CallExprRewriterFactoryBase {
@@ -44,8 +45,28 @@ public:
       std::string, std::shared_ptr<CallExprRewriterFactoryBase>>>
       MethodRewriterMap;
   static void initRewriterMap();
-  static void initMethodRewriterMap();
   RulePriority Priority = RulePriority::Fallback;
+private:
+  static void initRewriterMapCUB();
+  static void initRewriterMapCUFFT();
+  static void initRewriterMapCUBLAS();
+  static void initRewriterMapCURAND();
+  static void initRewriterMapCUSOLVER();
+  static void initRewriterMapComplex();
+  static void initRewriterMapDriver();
+  static void initRewriterMapMemory();
+  static void initRewriterMapNccl();
+  static void initRewriterMapStream();
+  static void initRewriterMapTexture();
+  static void initRewriterMapThrust();
+  static void initRewriterMapWarp();
+  static void initRewriterMapCUDNN();
+  static void initRewriterMapErrorHandling();
+  static void initRewriterMapLIBCU();
+  static void initRewriterMapEvent();
+  static void initRewriterMapMath();
+  static void initRewriterMapCooperativeGroups();
+  static void initMethodRewriterMap();
 };
 
 /// Abstract factory for all rewriter factories
@@ -76,20 +97,6 @@ public:
 
 using FuncCallExprRewriterFactory =
     CallExprRewriterFactory<FuncCallExprRewriter, std::string>;
-using MathFuncNameRewriterFactory =
-    CallExprRewriterFactory<MathFuncNameRewriter, std::string>;
-using NoRewriteFuncNameRewriterFactory =
-    CallExprRewriterFactory<NoRewriteFuncNameRewriter, std::string>;
-using MathUnsupportedRewriterFactory =
-    CallExprRewriterFactory<MathUnsupportedRewriter, std::string>;
-using MathSimulatedRewriterFactory =
-    CallExprRewriterFactory<MathSimulatedRewriter, std::string>;
-using MathTypeCastRewriterFactory =
-    CallExprRewriterFactory<MathTypeCastRewriter, std::string>;
-using MathBinaryOperatorRewriterFactory =
-    CallExprRewriterFactory<MathBinaryOperatorRewriter, BinaryOperatorKind>;
-using WarpFunctionRewriterFactory =
-    CallExprRewriterFactory<WarpFunctionRewriter, std::string>;
 template <class... MsgArgs>
 using UnsupportFunctionRewriterFactory =
     CallExprRewriterFactory<UnsupportFunctionRewriter<MsgArgs...>, Diagnostics,
@@ -153,12 +160,15 @@ public:
       if (ItMatch !=
           dpct::DpctGlobalInfo::getMacroTokenToMacroDefineLoc().end()) {
         if (ItMatch->second->IsInAnalysisScope) {
-          SL = ItMatch->second->NameTokenLoc;
+          DiagnosticsUtils::report<IDTy, Ts...>(
+              ItMatch->second->FilePath, ItMatch->second->Offset, MsgID, true,
+              UseTextBegin, std::forward<Ts>(Vals)...);
+          return;
         }
       }
     }
     DiagnosticsUtils::report<IDTy, Ts...>(
-        SL, MsgID, DpctGlobalInfo::getCompilerInstance(), &TS, UseTextBegin,
+        SL, MsgID, DpctGlobalInfo::getSourceManager(), &TS, UseTextBegin,
         std::forward<Ts>(Vals)...);
     for (auto &T : TS)
       DpctGlobalInfo::getInstance().addReplacement(
@@ -255,8 +265,8 @@ public:
 
   Optional<std::string> rewrite() override {
     Optional<std::string> &&Result = Inner->rewrite();
-    if (Result.hasValue() && IsAssigned)
-      return "(" + Result.getValue() + ", 0)";
+    if (Result.has_value() && IsAssigned)
+      return "(" + Result.value() + ", 0)";
     return Result;
   }
 };
@@ -275,8 +285,8 @@ public:
 
   Optional<std::string> rewrite() override {
     Optional<std::string> &&Result = Inner->rewrite();
-    if (Result.hasValue())
-      return Prefix + Result.getValue() + Suffix;
+    if (Result.has_value())
+      return Prefix + Result.value() + Suffix;
     return Result;
   }
 };
@@ -326,10 +336,10 @@ public:
     Optional<std::string> &&PredStr = Pred->rewrite();
     Optional<std::string> &&IfBlockStr = IfBlock->rewrite();
     Optional<std::string> &&ElseBlockStr = ElseBlock->rewrite();
-    return "if(" + PredStr.getValue() + "){" + NL.str() + Indent.str() +
-           Indent.str() + IfBlockStr.getValue() + ";" + NL.str() +
+    return "if(" + PredStr.value() + "){" + NL.str() + Indent.str() +
+           Indent.str() + IfBlockStr.value() + ";" + NL.str() +
            Indent.str() + "} else {" + NL.str() + Indent.str() + Indent.str() +
-           ElseBlockStr.getValue() + ";" + NL.str() + Indent.str() + "}";
+           ElseBlockStr.value() + ";" + NL.str() + Indent.str() + "}";
   }
 };
 
@@ -396,7 +406,7 @@ class RemoveCubTempStorageFactory : public CallExprRewriterFactoryBase {
 public:
   RemoveCubTempStorageFactory(std::shared_ptr<CallExprRewriterFactoryBase> InnerFactory)
     : Inner(InnerFactory) {}
-  
+
   std::shared_ptr<CallExprRewriter> create(const CallExpr *C) const override;
 };
 
@@ -458,117 +468,18 @@ protected:
   void setTargetCalleeName(const std::string &Str) { TargetCalleeName = Str; }
 };
 
-/// Base class for rewriting math function calls
-class MathCallExprRewriter : public FuncCallExprRewriter {
-public:
-  virtual Optional<std::string> rewrite() override;
-
-protected:
-  MathCallExprRewriter(const CallExpr *Call, StringRef SourceCalleeName,
-                       StringRef TargetCalleeName)
-      : FuncCallExprRewriter(Call, SourceCalleeName, TargetCalleeName) {}
-
-  void reportUnsupportedRoundingMode();
-};
-
-/// The rewriter for renaming math function calls
-class MathFuncNameRewriter : public MathCallExprRewriter {
-protected:
-  MathFuncNameRewriter(const CallExpr *Call, StringRef SourceCalleeName,
-                       StringRef TargetCalleeName)
-      : MathCallExprRewriter(Call, SourceCalleeName, TargetCalleeName) {}
+class NoRewriteFuncNameRewriter : public CallExprRewriter {
+  std::string NewFuncName;
 
 public:
-  virtual Optional<std::string> rewrite() override;
-
-protected:
-  std::string getNewFuncName();
-  static const std::vector<std::string> SingleFuctions;
-  static const std::vector<std::string> DoubleFuctions;
-  friend MathFuncNameRewriterFactory;
-};
-
-/// The rewriter for renaming math function calls
-class NoRewriteFuncNameRewriter : public MathFuncNameRewriter {
-protected:
-  NoRewriteFuncNameRewriter(const CallExpr *Call, StringRef SourceCalleeName,
-                            StringRef TargetCalleeName)
-      : MathFuncNameRewriter(Call, SourceCalleeName, TargetCalleeName) {
+  NoRewriteFuncNameRewriter(const CallExpr *Call, StringRef SourceName,
+                            StringRef NewName)
+      : CallExprRewriter(Call, SourceCalleeName) {
+    NewFuncName = NewName.str();
     NoRewrite = true;
   }
 
-public:
-  virtual Optional<std::string> rewrite() override;
-  friend NoRewriteFuncNameRewriterFactory;
-};
-
-/// The rewriter for warning on unsupported math functions
-class MathUnsupportedRewriter : public MathCallExprRewriter {
-protected:
-  using Base = MathCallExprRewriter;
-  MathUnsupportedRewriter(const CallExpr *Call, StringRef SourceCalleeName,
-                          StringRef TargetCalleeName)
-      : Base(Call, SourceCalleeName, TargetCalleeName) {}
-
-  virtual Optional<std::string> rewrite() override;
-
-  friend MathUnsupportedRewriterFactory;
-};
-
-/// The rewriter for replacing math function calls with type casting expressions
-class MathTypeCastRewriter : public MathCallExprRewriter {
-protected:
-  using Base = MathCallExprRewriter;
-  MathTypeCastRewriter(const CallExpr *Call, StringRef SourceCalleeName,
-                       StringRef TargetCalleeName)
-      : Base(Call, SourceCalleeName, TargetCalleeName) {}
-
-  virtual Optional<std::string> rewrite() override;
-
-  friend MathTypeCastRewriterFactory;
-};
-
-/// The rewriter for replacing math function calls with emulations
-class MathSimulatedRewriter : public MathCallExprRewriter {
-protected:
-  using Base = MathCallExprRewriter;
-  MathSimulatedRewriter(const CallExpr *Call, StringRef SourceCalleeName,
-                        StringRef TargetCalleeName)
-      : Base(Call, SourceCalleeName, TargetCalleeName) {}
-
-  virtual Optional<std::string> rewrite() override;
-
-  friend MathSimulatedRewriterFactory;
-};
-
-/// The rewriter for replacing math function calls with binary operator
-/// expressions
-class MathBinaryOperatorRewriter : public MathCallExprRewriter {
-  std::string LHS, RHS;
-  BinaryOperatorKind Op;
-
-protected:
-  MathBinaryOperatorRewriter(const CallExpr *Call, StringRef SourceCalleeName,
-                             BinaryOperatorKind Op)
-      : MathCallExprRewriter(Call, SourceCalleeName, ""), Op(Op) {}
-
-public:
-  virtual ~MathBinaryOperatorRewriter() {}
-
-  virtual Optional<std::string> rewrite() override;
-
-protected:
-  void setLHS(std::string L) { LHS = L; }
-  void setRHS(std::string R) { RHS = R; }
-
-  // Build string which is used to replace original expression.
-  inline Optional<std::string> buildRewriteString() {
-    if (LHS == "")
-      return buildString(BinaryOperator::getOpcodeStr(Op), RHS);
-    return buildString(LHS, " ", BinaryOperator::getOpcodeStr(Op), " ", RHS);
-  }
-
-  friend MathBinaryOperatorRewriterFactory;
+  Optional<std::string> rewrite() override { return NewFuncName; }
 };
 
 struct ThrustFunctor {
@@ -693,14 +604,23 @@ void printCapture(StreamT &Stream, bool IsCaptureRef) {
 class DerefExpr {
   bool AddrOfRemoved = false, NeedParens = false;
   const Expr *E = nullptr;
+  const CallExpr * C = nullptr;
 
   template <class StreamT>
   void print(StreamT &Stream, ExprAnalysis &EA, bool IgnoreDerefOp) const {
-    std::unique_ptr<ParensPrinter<StreamT>> Parens;
     if (!AddrOfRemoved && !IgnoreDerefOp)
       Stream << "*";
 
     printWithParens(Stream, EA, E);
+  }
+
+  template <class StreamT>
+  void print(StreamT &Stream, ArgumentAnalysis &AA, bool IgnoreDerefOp,
+              std::pair<const CallExpr *, const Expr *> P) const {
+    if (!AddrOfRemoved && !IgnoreDerefOp)
+      Stream << "*";
+
+    printWithParens(Stream, AA, P);
   }
 
   DerefExpr() = default;
@@ -717,12 +637,34 @@ public:
   }
 
   template <class StreamT> void print(StreamT &Stream) const {
-    ExprAnalysis EA;
-    print(Stream, EA, false);
+    if (C == nullptr) {
+      ExprAnalysis EA;
+      print(Stream, EA, false);
+    } else {
+      ArgumentAnalysis AA;
+      std::pair<const CallExpr*, const Expr*> ExprPair(C, E);
+      print(Stream, AA, false, ExprPair);
+    }
   }
 
-  static DerefExpr create(const Expr *E);
+  static DerefExpr create(const Expr *E, const CallExpr * C = nullptr);
 };
+
+template <class StreamT>
+void print(StreamT &Stream,
+           std::pair<const llvm::StringRef, clang::dpct::DerefExpr> Pair) {
+  Stream << Pair.first;
+  ArgumentAnalysis AA;
+  Pair.second.printArg(Stream, AA);
+}
+template <class StreamT>
+void print(StreamT &Stream,
+           std::pair<std::pair<const llvm::StringRef, clang::dpct::DerefExpr>,
+                     const llvm::StringRef>
+               Pair) {
+  print(Stream, Pair.first);
+  Stream << Pair.second;
+}
 
 class RenameWithSuffix {
   StringRef OriginalName, SuffixStr;
@@ -745,6 +687,9 @@ public:
   template <class StreamT> void print(StreamT &) const {}
   template <class StreamT>
   void printArg(std::false_type, StreamT &Stream, const Expr *E) const {
+    if(auto defaultArg = dyn_cast<CXXDefaultArgExpr>(E)){
+      E = defaultArg->getExpr();
+    }
     dpct::print(Stream, A, E);
   }
 
@@ -844,7 +789,7 @@ template <class CalleeT, class... CallArgsT> class CallExprPrinter {
   ArgsPrinter<false, CallArgsT...> Args;
 
 public:
-  CallExprPrinter(CalleeT Callee, CallArgsT &&...Args)
+  CallExprPrinter(const CalleeT &Callee, CallArgsT &&...Args)
       : Callee(Callee), Args(std::forward<CallArgsT>(Args)...) {}
   template <class StreamT> void print(StreamT &Stream) const {
     dpct::print(Stream, Callee);
@@ -874,7 +819,7 @@ template <class BaseT, class MemberT> class MemberExprPrinter {
   MemberT MemberName;
 
 public:
-  MemberExprPrinter(BaseT Base, bool IsArrow, MemberT MemberName)
+  MemberExprPrinter(const BaseT &Base, bool IsArrow, MemberT MemberName)
       : Base(Base), IsArrow(IsArrow), MemberName(MemberName) {}
 
   template <class StreamT> void print(StreamT &Stream) const {
@@ -883,11 +828,25 @@ public:
   }
 };
 
+template <class BaseT, class MemberT> class StaticMemberExprPrinter {
+  BaseT Base;
+  MemberT Member;
+public:
+  StaticMemberExprPrinter(BaseT &&Base, MemberT &&Member)
+    : Base(std::forward<BaseT>(Base)), Member(std::forward<MemberT>(Member)) {}
+  
+  template <class StreamT> void print(StreamT &Stream) const {
+    dpct::print(Stream, Base);
+    Stream << "::";
+    dpct::print(Stream, Member);
+  }
+};
+
 template <class BaseT, class MemberT, class... CallArgsT>
 class MemberCallPrinter
     : public CallExprPrinter<MemberExprPrinter<BaseT, MemberT>, CallArgsT...> {
 public:
-  MemberCallPrinter(BaseT Base, bool IsArrow, MemberT MemberName,
+  MemberCallPrinter(const BaseT &Base, bool IsArrow, MemberT MemberName,
                     CallArgsT &&...Args)
       : CallExprPrinter<MemberExprPrinter<BaseT, MemberT>, CallArgsT...>(
             MemberExprPrinter<BaseT, MemberT>(std::move(Base), IsArrow,
@@ -977,6 +936,29 @@ public:
   template <class StreamT> void print(StreamT &Stream) const {
     Stream << "new ";
     Base::print(Stream);
+  }
+};
+
+template<class SubExprT>
+class TypenameExprPrinter {
+  SubExprT SubExpr;
+public:
+  TypenameExprPrinter(SubExprT &&SubExpr) : SubExpr(std::forward<SubExprT>(SubExpr)) {}
+  template <class StreamT> void print(StreamT &Stream) const {
+    Stream << "typename ";
+    dpct::print(Stream, SubExpr);
+  }
+};
+
+template <class SubExprT> class ZeroInitializerPrinter {
+  SubExprT SubExpr;
+
+public:
+  ZeroInitializerPrinter(SubExprT &&SubExpr)
+      : SubExpr(std::forward<SubExprT>(SubExpr)) {}
+  template <typename StreamT> void print(StreamT &&Stream) const {
+    dpct::print(Stream, SubExpr);
+    Stream << "{}";
   }
 };
 
@@ -1339,10 +1321,33 @@ class UserDefinedRewriterFactory : public CallExprRewriterFactoryBase {
   // Information for building the result string from the original function call
   OutputBuilder OB;
   std::string OutStr;
+  std::vector<std::string> &Includes;
+  bool HasExplicitTemplateArgs = false;
+
+  struct NullRewriter : public CallExprRewriter {
+    NullRewriter(const CallExpr *C, StringRef Name)
+        : CallExprRewriter(C, Name) {}
+
+    Optional<std::string> rewrite() override { return {}; }
+  };
+
+public:
+  static bool hasExplicitTemplateArgs(const CallExpr *C) {
+    auto Callee = C->getCallee();
+    if (!Callee)
+      return false;
+
+    Callee = Callee->IgnoreImpCasts();
+    if (auto DRE = clang::dyn_cast<DeclRefExpr>(Callee))
+      return DRE->hasExplicitTemplateArgs();
+
+    return false;
+  }
 
 public:
   UserDefinedRewriterFactory(MetaRuleObject &R)
-      : OutStr(R.Out), Includes(R.Includes) {
+      : OutStr(R.Out), Includes(R.Includes),
+        HasExplicitTemplateArgs(R.HasExplicitTemplateArgs) {
     Priority = R.Priority;
     OB.Kind = OutputBuilder::Kind::Top;
     OB.RuleName = R.RuleId;
@@ -1364,9 +1369,14 @@ public:
     if (!Call)
       return std::shared_ptr<UserDefinedRewriter>();
 
+    if (hasExplicitTemplateArgs(Call) && !HasExplicitTemplateArgs)
+      return std::make_shared<NullRewriter>(Call, "");
+
+    for (auto &Header : Includes)
+      DpctGlobalInfo::getInstance().insertHeader(Call->getBeginLoc(), Header);
+
     return std::make_shared<UserDefinedRewriter>(Call, OB);
   }
-  std::vector<std::string> &Includes;
 };
 
 std::shared_ptr<CallExprRewriterFactoryBase>
@@ -1387,6 +1397,26 @@ public:
     if (ArgType.empty())
       return true;
     return ArgType.find(TypeName) != std::string::npos;
+  }
+};
+
+class CheckEnumArgStr {
+  unsigned Idx;
+  std::string EnumArgValueStr;
+
+public:
+  CheckEnumArgStr(unsigned I, const std::string &EnumArgValue)
+      : Idx(I), EnumArgValueStr(EnumArgValue) {}
+  bool operator()(const CallExpr *C) {
+    if (C->getNumArgs() <= Idx)
+      return false;
+
+    if (auto DRE = dyn_cast<DeclRefExpr>(C->getArg(Idx))) {
+      if (auto ECD = dyn_cast<EnumConstantDecl>(DRE->getDecl())) {
+        return ECD->getNameAsString() == EnumArgValueStr;
+      }
+    }
+    return false;
   }
 };
 
@@ -1424,6 +1454,8 @@ public:
 
 using CheckIntergerTemplateArgValueNE = CheckIntergerTemplateArgValue<std::not_equal_to<std::int64_t>>;
 using CheckIntergerTemplateArgValueLE = CheckIntergerTemplateArgValue<std::less_equal<std::int64_t>>;
+
+std::function<bool(const CallExpr *C)> hasManagedAttr(int Idx);
 
 } // namespace dpct
 } // namespace clang

@@ -14,11 +14,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Taint.h"
 #include "Yaml.h"
 #include "clang/AST/Attr.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
+#include "clang/StaticAnalyzer/Checkers/Taint.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
@@ -92,10 +92,8 @@ bool isStdin(SVal Val, const ASTContext &ACtx) {
     return false;
 
   // Get it's symbol and find the declaration region it's pointing to.
-  const auto *Sm = dyn_cast<SymbolRegionValue>(SymReg->getSymbol());
-  if (!Sm)
-    return false;
-  const auto *DeclReg = dyn_cast<DeclRegion>(Sm->getRegion());
+  const auto *DeclReg =
+      dyn_cast_or_null<DeclRegion>(SymReg->getSymbol()->getOriginRegion());
   if (!DeclReg)
     return false;
 
@@ -129,7 +127,7 @@ SVal getPointeeOf(const CheckerContext &C, Loc LValue) {
 Optional<SVal> getPointeeOf(const CheckerContext &C, SVal Arg) {
   if (auto LValue = Arg.getAs<Loc>())
     return getPointeeOf(C, *LValue);
-  return None;
+  return std::nullopt;
 }
 
 /// Given a pointer, return the SVal of its pointee or if it is tainted,
@@ -149,12 +147,12 @@ Optional<SVal> getTaintedPointeeOrPointer(const CheckerContext &C, SVal Arg) {
   if (isStdin(Arg, C.getASTContext()))
     return Arg;
 
-  return None;
+  return std::nullopt;
 }
 
 bool isTaintedOrPointsToTainted(const Expr *E, const ProgramStateRef &State,
                                 CheckerContext &C) {
-  return getTaintedPointeeOrPointer(C, C.getSVal(E)).hasValue();
+  return getTaintedPointeeOrPointer(C, C.getSVal(E)).has_value();
 }
 
 /// ArgSet is used to describe arguments relevant for taint detection or
@@ -163,7 +161,8 @@ bool isTaintedOrPointsToTainted(const Expr *E, const ProgramStateRef &State,
 class ArgSet {
 public:
   ArgSet() = default;
-  ArgSet(ArgVecTy &&DiscreteArgs, Optional<ArgIdxTy> VariadicIndex = None)
+  ArgSet(ArgVecTy &&DiscreteArgs,
+         Optional<ArgIdxTy> VariadicIndex = std::nullopt)
       : DiscreteArgs(std::move(DiscreteArgs)),
         VariadicIndex(std::move(VariadicIndex)) {}
 
@@ -175,15 +174,6 @@ public:
   }
 
   bool isEmpty() const { return DiscreteArgs.empty() && !VariadicIndex; }
-
-  ArgVecTy ArgsUpTo(ArgIdxTy LastArgIdx) const {
-    ArgVecTy Args;
-    for (ArgIdxTy I = ReturnValueIndex; I <= LastArgIdx; ++I) {
-      if (contains(I))
-        Args.push_back(I);
-    }
-    return Args;
-  }
 
 private:
   ArgVecTy DiscreteArgs;
@@ -213,7 +203,7 @@ class GenericTaintRule {
   GenericTaintRule() = default;
 
   GenericTaintRule(ArgSet &&Sink, ArgSet &&Filter, ArgSet &&Src, ArgSet &&Dst,
-                   Optional<StringRef> SinkMsg = None)
+                   Optional<StringRef> SinkMsg = std::nullopt)
       : SinkArgs(std::move(Sink)), FilterArgs(std::move(Filter)),
         PropSrcArgs(std::move(Src)), PropDstArgs(std::move(Dst)),
         SinkMsg(SinkMsg) {}
@@ -222,7 +212,7 @@ public:
   /// Make a rule that reports a warning if taint reaches any of \p FilterArgs
   /// arguments.
   static GenericTaintRule Sink(ArgSet &&SinkArgs,
-                               Optional<StringRef> Msg = None) {
+                               Optional<StringRef> Msg = std::nullopt) {
     return {std::move(SinkArgs), {}, {}, {}, Msg};
   }
 
@@ -245,7 +235,7 @@ public:
   /// Make a rule that taints all PropDstArgs if any of PropSrcArgs is tainted.
   static GenericTaintRule SinkProp(ArgSet &&SinkArgs, ArgSet &&SrcArgs,
                                    ArgSet &&DstArgs,
-                                   Optional<StringRef> Msg = None) {
+                                   Optional<StringRef> Msg = std::nullopt) {
     return {
         std::move(SinkArgs), {}, std::move(SrcArgs), std::move(DstArgs), Msg};
   }
@@ -340,11 +330,6 @@ private:
 
 class GenericTaintChecker : public Checker<check::PreCall, check::PostCall> {
 public:
-  static void *getTag() {
-    static int Tag;
-    return &Tag;
-  }
-
   void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
   void checkPostCall(const CallEvent &Call, CheckerContext &C) const;
 
@@ -503,8 +488,10 @@ void GenericTaintRuleParser::parseConfig(const std::string &Option,
   bool IsDstVariadic = P.VarType == TaintConfiguration::VariadicType::Dst;
   Optional<ArgIdxTy> JustVarIndex = P.VarIndex;
 
-  ArgSet SrcDesc(std::move(P.SrcArgs), IsSrcVariadic ? JustVarIndex : None);
-  ArgSet DstDesc(std::move(P.DstArgs), IsDstVariadic ? JustVarIndex : None);
+  ArgSet SrcDesc(std::move(P.SrcArgs),
+                 IsSrcVariadic ? JustVarIndex : std::nullopt);
+  ArgSet DstDesc(std::move(P.DstArgs),
+                 IsDstVariadic ? JustVarIndex : std::nullopt);
 
   consumeRulesFromConfig(
       P, GenericTaintRule::Prop(std::move(SrcDesc), std::move(DstDesc)), Rules);
@@ -748,7 +735,7 @@ void GenericTaintChecker::initTaintRules(CheckerContext &C) const {
   }
 
   GenericTaintRuleParser::RulesContTy Rules{
-      ConfigParser.parseConfiguration(Option, std::move(Config.getValue()))};
+      ConfigParser.parseConfiguration(Option, std::move(*Config))};
 
   DynamicTaintRules.emplace(std::make_move_iterator(Rules.begin()),
                             std::make_move_iterator(Rules.end()));
@@ -840,7 +827,7 @@ void GenericTaintRule::process(const GenericTaintChecker &Checker,
   /// Check for taint sinks.
   ForEachCallArg([this, &Checker, &C, &State](ArgIdxTy I, const Expr *E, SVal) {
     if (SinkArgs.contains(I) && isTaintedOrPointsToTainted(E, State, C))
-      Checker.generateReportIfTainted(E, SinkMsg.getValueOr(MsgCustomSink), C);
+      Checker.generateReportIfTainted(E, SinkMsg.value_or(MsgCustomSink), C);
   });
 
   /// Check for taint filters.
@@ -866,7 +853,7 @@ void GenericTaintRule::process(const GenericTaintChecker &Checker,
     return;
 
   const auto WouldEscape = [](SVal V, QualType Ty) -> bool {
-    if (!V.getAs<Loc>())
+    if (!isa<Loc>(V))
       return false;
 
     const bool IsNonConstRef = Ty->isReferenceType() && !Ty.isConstQualified();

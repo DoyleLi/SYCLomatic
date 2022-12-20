@@ -134,22 +134,23 @@ OPT_TYPE OPT_VAR(OPTION_NAME, __VA_ARGS__);
 #else
   static cl::opt<std::string> BuildPath("p", cl::desc("Build path"),
                                         cl::Optional, cl::cat(Category),
-                                        cl::sub(*cl::AllSubCommands));
+                                        cl::sub(cl::SubCommand::getAll()));
 
   static cl::list<std::string> SourcePaths(
       cl::Positional, cl::desc("<source0> [... <sourceN>]"), OccurrencesFlag,
-      cl::cat(Category), cl::sub(*cl::AllSubCommands));
+      cl::cat(Category), cl::sub(cl::SubCommand::getAll()));
 
   static cl::list<std::string> ArgsAfter(
       "extra-arg",
       cl::desc("Additional argument to append to the compiler command line"),
-      cl::cat(Category), cl::sub(*cl::AllSubCommands));
+      cl::cat(Category), cl::sub(cl::SubCommand::getAll()));
 
   static cl::list<std::string> ArgsBefore(
       "extra-arg-before",
       cl::desc("Additional argument to prepend to the compiler command line"),
-      cl::cat(Category), cl::sub(*cl::AllSubCommands));
+      cl::cat(Category), cl::sub(cl::SubCommand::getAll()));
 #endif // SYCLomatic_CUSTOMIZATION
+
   cl::ResetAllOptionOccurrences();
 
   cl::HideUnrelatedOptions(Category);
@@ -234,6 +235,7 @@ OPT_TYPE OPT_VAR(OPTION_NAME, __VA_ARGS__);
                                                                ErrorMessage);
 #endif // SYCLomatic_CUSTOMIZATION
     }
+
     if (!Compilations) {
 #ifdef SYCLomatic_CUSTOMIZATION
       if (SourcePaths.size() == 0 && !BuildPath.getValue().empty()){
@@ -331,6 +333,22 @@ OPT_TYPE OPT_VAR(OPTION_NAME, __VA_ARGS__);
           new FixedCompilationDatabase(".", std::vector<std::string>()));
     }
   }
+#ifdef SYCLomatic_CUSTOMIZATION
+  if (!SourcePathList.empty() &&
+              Compilations->getAllCompileCommands().size() != 0) {
+    for (auto Path : SourcePathList) {
+      // Add the -x cuda for the case not in database.
+      if (Compilations->getCompileCommands(Path).empty()) {
+        IsCudaFile = true;
+        break;
+      }
+    }
+    if (IsCudaFile) {
+      Compilations = std::make_unique<ExpandedCompilationDatabase>(
+                                                      std::move(Compilations));
+    }
+  }
+#endif
   auto AdjustingCompilations =
       std::make_unique<ArgumentsAdjustingCompilations>(
           std::move(Compilations));

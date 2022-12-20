@@ -28,7 +28,7 @@
 namespace clang {
 namespace dpct {
 
-class ASTTraversalManager;
+enum class PassKind : unsigned { PK_Analysis = 0, PK_Migration, PK_End };
 
 /// Migration rules at the pre-processing stages, e.g. macro rewriting and
 /// including directives rewriting.
@@ -38,20 +38,17 @@ class IncludesCallbacks : public PPCallbacks {
   SourceManager &SM;
 
   std::unordered_set<std::string> SeenFiles;
-  ASTTraversalManager &ATM;
   bool IsFileInCmd = true;
 
 public:
   IncludesCallbacks(TransformSetTy &TransformSet,
-                    IncludeMapSetTy &IncludeMapSet, SourceManager &SM,
-                    ASTTraversalManager &ATM)
-      : TransformSet(TransformSet), IncludeMapSet(IncludeMapSet), SM(SM),
-        ATM(ATM) {}
+                    IncludeMapSetTy &IncludeMapSet, SourceManager &SM)
+      : TransformSet(TransformSet), IncludeMapSet(IncludeMapSet), SM(SM) {}
   void InclusionDirective(SourceLocation HashLoc, const Token &IncludeTok,
                           StringRef FileName, bool IsAngled,
-                          CharSourceRange FilenameRange, const FileEntry *File,
-                          StringRef SearchPath, StringRef RelativePath,
-                          const Module *Imported,
+                          CharSourceRange FilenameRange,
+                          Optional<FileEntryRef> File, StringRef SearchPath,
+                          StringRef RelativePath, const Module *Imported,
                           SrcMgr::CharacteristicKind FileType) override;
   /// Hook called whenever a macro definition is seen.
   void MacroDefined(const Token &MacroNameTok,
@@ -89,63 +86,6 @@ private:
   removeMacroInvocationAndTrailingSpaces(SourceRange Range);
 };
 
-class ASTTraversal;
-using ASTTraversalConstructor = std::function<ASTTraversal *()>;
-static constexpr size_t NUM_OF_TRANSFORMATIONS = 3;
-using EmittedTransformationsTy =
-    llvm::SmallVector<TextModification *, NUM_OF_TRANSFORMATIONS>;
-
-class ASTTraversalMetaInfo {
-public:
-  static std::unordered_map<const char *, std::string> &getNameTable() {
-    static std::unordered_map<const char *, std::string> Table;
-    return Table;
-  }
-
-  static std::unordered_map<std::string, const char *> &getIDTable() {
-    static std::unordered_map<std::string, const char *> Table;
-    return Table;
-  }
-
-  static const char *getID(const std::string &Name) {
-    auto &IdTable = getIDTable();
-    if (IdTable.find(Name) != IdTable.end()) {
-      return IdTable[Name];
-    }
-    return nullptr;
-  }
-
-  static const std::string getName(const char *ID) {
-    auto &NameTable = getNameTable();
-    if (NameTable.find(ID) != NameTable.end()) {
-      return NameTable[ID];
-    }
-    std::string NullStr;
-    return NullStr;
-  }
-
-  static std::unordered_map<const char *, ASTTraversalConstructor> &
-  getConstructorTable() {
-    static std::unordered_map<const char *, ASTTraversalConstructor> FactoryMap;
-    return FactoryMap;
-  }
-
-  static std::unordered_map<const char *, EmittedTransformationsTy> &
-  getEmittedTransformations() {
-    static std::unordered_map<const char *, EmittedTransformationsTy>
-        EmittedTransformations;
-    return EmittedTransformations;
-  }
-
-  static void registerRule(const char *ID, const std::string &Name,
-                           ASTTraversalConstructor Factory) {
-    getConstructorTable()[ID] = Factory;
-    getIDTable()[Name] = ID;
-    getNameTable()[ID] = Name;
-    getEmittedTransformations()[ID] = EmittedTransformationsTy();
-  }
-};
-
 /// Base class for all tool-related AST traversals.
 class ASTTraversal : public ast_matchers::MatchFinder::MatchCallback {
 public:
@@ -158,43 +98,15 @@ public:
   virtual bool isMigrationRule() const { return false; }
 };
 
-/// Pass manager for ASTTraversal instances.
-class ASTTraversalManager {
-  std::vector<std::unique_ptr<ASTTraversal>> Storage;
-  ast_matchers::MatchFinder Matchers;
-
-public:
-  const CompilerInstance &CI;
-  const std::string AnalysisScope;
-  // Set per matchAST invocation
-  ASTContext *Context = nullptr;
-  ASTTraversalManager(const CompilerInstance &CI, const std::string &ASP)
-      : CI(CI), AnalysisScope(ASP) {}
-  /// Add \a TR to the manager.
-  ///
-  /// The ownership of the TR is transferred to the ASTTraversalManager.
-  void emplaceMigrationRule(const char *ID) {
-    assert(ASTTraversalMetaInfo::getConstructorTable().find(ID) !=
-           ASTTraversalMetaInfo::getConstructorTable().end());
-    Storage.emplace_back(std::unique_ptr<ASTTraversal>(
-        ASTTraversalMetaInfo::getConstructorTable()[ID]()));
-  }
-
-  void emplaceAllRules();
-
-  /// Run all emplaced ASTTraversal's over the given AST and populate \a TS.
-  void matchAST(ASTContext &Context, TransformSetTy &TS, StmtStringMap &SSM);
-};
-
 /// Base class for migration rules.
 ///
 /// The purpose of a MigrationRule is to populate TransformSet with
 /// SourceTransformation's.
 class MigrationRule : public ASTTraversal {
-  friend class ASTTraversalManager;
-  ASTTraversalManager *TM;
+  friend class MigrationRuleManager;
 
   void setTransformSet(TransformSetTy &TS) { TransformSet = &TS; }
+  void setName(StringRef N) { Name = N; }
 
   static unsigned PairID;
 
@@ -203,7 +115,7 @@ protected:
   /// Add \a TM to the set of transformations.
   ///
   /// The ownership of the TM is transferred to the TransformSet.
-  void emplaceTransformation(const char *RuleID, TextModification *TM);
+  void emplaceTransformation(TextModification *TM);
 
   inline static unsigned incPairID() { return ++PairID; }
 
@@ -220,12 +132,14 @@ protected:
       if (ItMatch !=
           dpct::DpctGlobalInfo::getMacroTokenToMacroDefineLoc().end()) {
         if (ItMatch->second->IsInAnalysisScope) {
-          SL = ItMatch->second->NameTokenLoc;
+          return DiagnosticsUtils::report<IDTy, Ts...>(
+              ItMatch->second->FilePath, ItMatch->second->Offset, MsgID, true,
+              UseTextBegin, std::forward<Ts>(Vals)...);
         }
       }
     }
     return DiagnosticsUtils::report<IDTy, Ts...>(
-        SL, MsgID, getCompilerInstance(), TransformSet, UseTextBegin,
+        SL, MsgID, SM, TransformSet, UseTextBegin,
         std::forward<Ts>(Vals)...);
   }
 
@@ -248,8 +162,8 @@ protected:
       Begin = SM.getExpansionLoc(Begin);
     }
 
-    DiagnosticsUtils::report<IDTy, Ts...>(Begin, MsgID, getCompilerInstance(),
-                                          TransformSet, UseTextBegin,
+    DiagnosticsUtils::report<IDTy, Ts...>(Begin, MsgID, SM, TransformSet,
+                                          UseTextBegin,
                                           std::forward<Ts>(Vals)...);
   }
 
@@ -301,22 +215,25 @@ private:
 
   // Check if the location has been replaced by the same rule.
   bool isReplaced(SourceRange &SR) {
-    for (auto RR : Replaced) {
+    for (const auto &RR : Replaced) {
       if (SR == RR)
         return true;
     }
     Replaced.push_back(SR);
     return false;
   }
+
   std::vector<SourceRange> Replaced;
+  TransformSetTy Transformations;
+  StringRef Name;
 
 public:
   bool isMigrationRule() const override { return true; }
   static bool classof(const ASTTraversal *T) { return T->isMigrationRule(); }
 
-  virtual const std::string getName() const { return ""; }
-  virtual const EmittedTransformationsTy getEmittedTransformations() const {
-    return EmittedTransformationsTy();
+  StringRef getName() const { return Name; }
+  const TransformSetTy &getEmittedTransformations() const {
+    return Transformations;
   }
 
   void print(llvm::raw_ostream &OS);
@@ -327,15 +244,6 @@ public:
 template <typename T> class NamedMigrationRule : public MigrationRule {
 public:
   static const char ID;
-
-  const std::string getName() const override final {
-    return ASTTraversalMetaInfo::getNameTable()[&ID];
-  }
-
-  const EmittedTransformationsTy
-  getEmittedTransformations() const override final {
-    return ASTTraversalMetaInfo::getEmittedTransformations()[&ID];
-  }
 
   void insertIncludeFile(SourceLocation SL, std::set<std::string> &HeaderFilter,
                          std::string &&InsertText);
@@ -356,8 +264,8 @@ public:
 protected:
   void emplaceTransformation(TextModification *TM) {
     if (TM) {
-      TM->setParentRuleID(&ID);
-      MigrationRule::emplaceTransformation(&ID, TM);
+      TM->setParentRuleName(getName());
+      MigrationRule::emplaceTransformation(TM);
     }
   }
 
@@ -385,7 +293,7 @@ protected:
   }
 
   void addReplacementForLibraryAPI(LibraryMigrationFlags Flags,
-                                   LibraryMigrationStrings Strings,
+                                   LibraryMigrationStrings &Strings,
                                    LibraryMigrationLocations Locations,
                                    std::string FuncName, const CallExpr *CE) {
     if (Flags.NeedUseLambda) {
@@ -530,28 +438,7 @@ private:
                          const ast_matchers::MatchFinder::MatchResult &Result);
 };
 
-/// Migration rule for thrust functions
-class ThrustFunctionRule : public NamedMigrationRule<ThrustFunctionRule> {
-public:
-  void registerMatcher(ast_matchers::MatchFinder &MF) override;
-  void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
 
-private:
-  std::set<SourceLocation> SortULExpr;
-  void thrustFuncMigration(const ast_matchers::MatchFinder::MatchResult &Result,
-                           const CallExpr *C,
-                           const UnresolvedLookupExpr *ULExpr = NULL);
-};
-
-/// Migration rule for thrust constructor expressions
-class ThrustCtorExprRule : public NamedMigrationRule<ThrustCtorExprRule> {
-public:
-  void registerMatcher(ast_matchers::MatchFinder &MF) override;
-  void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
-
-private:
-  void replacePlaceHolderExpr(const CXXConstructExpr *CE);
-};
 
 /// Migration rule for types replacements in var. declarations.
 class TypeInDeclRule : public NamedMigrationRule<TypeInDeclRule> {
@@ -575,8 +462,11 @@ private:
   // Used to prevent them from being processed multiple times
   std::unordered_set<TypeLoc, TypeLocHash, TypeLocEqual> ProcessedTypeLocs;
 
-  void processCudaStreamType(const DeclaratorDecl *DD, const SourceManager *SM,
-                             bool &SpecialCaseHappened);
+  void processConstFFTHandleType(const DeclaratorDecl *DD,
+                                 SourceLocation BeginLoc,
+                                 SourceLocation EndLoc,
+                                 bool HasGlobalNSPrefix);
+  void processCudaStreamType(const DeclaratorDecl *DD);
   bool replaceTemplateSpecialization(SourceManager *SM, LangOptions &LOpts,
                                      SourceLocation BeginLoc,
                                      const TemplateSpecializationTypeLoc TSL);
@@ -599,9 +489,12 @@ public:
 class UserDefinedAPIRule
     : public clang::dpct::NamedMigrationRule<UserDefinedAPIRule> {
   std::string APIName;
+  bool HasExplicitTemplateArgs;
 
 public:
-  UserDefinedAPIRule(std::string APIName) : APIName(APIName){};
+  UserDefinedAPIRule(std::string APIName, bool HasExplicitTemplateArguments)
+      : APIName(std::move(APIName)),
+        HasExplicitTemplateArgs(HasExplicitTemplateArguments){};
   void registerMatcher(clang::ast_matchers::MatchFinder &MF) override;
   void runRule(const clang::ast_matchers::MatchFinder::MatchResult &Result);
 };
@@ -690,16 +583,6 @@ private:
   static const char NamespaceName[];
 };
 
-/// Migration rule for vector type constructor and make_<vector type>()
-class VectorTypeCtorRule : public NamedMigrationRule<VectorTypeCtorRule> {
-public:
-  void registerMatcher(ast_matchers::MatchFinder &MF) override;
-  void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
-
-private:
-  std::string getReplaceTypeName(const std::string &TypeName);
-};
-
 class ReplaceDim3CtorRule : public NamedMigrationRule<ReplaceDim3CtorRule> {
   ReplaceDim3Ctor *getReplaceDim3Modification(
       const ast_matchers::MatchFinder::MatchResult &Result);
@@ -714,10 +597,6 @@ class Dim3MemberFieldsRule : public NamedMigrationRule<Dim3MemberFieldsRule> {
 public:
   void registerMatcher(ast_matchers::MatchFinder &MF) override;
   void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
-
-private:
-  void FieldsRename(const ast_matchers::MatchFinder::MatchResult &Result,
-                    std::string Str, const MemberExpr *ME);
 };
 
 /// Migration rule for return types replacements.
@@ -744,8 +623,9 @@ public:
   void insertTryCatch(const FunctionDecl *FD);
 };
 
-/// Migration rule for Device Property variables.
-class DevicePropVarRule : public NamedMigrationRule<DevicePropVarRule> {
+/// Migration rule for CUDA device property and attribute.
+/// E.g. cudaDeviceProp, cudaPointerAttributes.
+class DeviceInfoVarRule : public NamedMigrationRule<DeviceInfoVarRule> {
 public:
   void registerMatcher(ast_matchers::MatchFinder &MF) override;
   void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
@@ -1350,6 +1230,12 @@ public:
   static EventQueryTraversal getEventQueryTraversal();
 
 private:
+  void handleEventRecordWithProfilingEnabled(
+      const CallExpr *CE, const ast_matchers::MatchFinder::MatchResult &Result,
+      bool IsAssigned);
+  void handleEventRecordWithProfilingDisabled(
+      const CallExpr *CE, const ast_matchers::MatchFinder::MatchResult &Result,
+      bool IsAssigned);
   void findEventAPI(const Stmt *Node, const CallExpr *&Call,
                     const std::string EventAPIName);
   void processAsyncJob(const Stmt *Node);
@@ -1434,43 +1320,6 @@ public:
   void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
 };
 
-// clang-format off
-// For case like:
-// ...
-// cudaEvent_t *kernelEvent = (cudaEvent_t *) malloc(n_streams * sizeof(cudaEvent_t));
-// ...
-// free(kernelEvent);
-// ...
-// As cudaEvent_t in CUDA side is a pointer, while sycl::event is a object
-// in SYCL side, if the code piece is migrated to:
-// ...
-// sycl::event *kernelEvent;
-// kernelEvent = (sycl::event *)malloc(n_streams * sizeof(sycl::event));
-// ...
-// free(kernelEvent);
-// ...
-// Then, the contractor of the object sycl::event will not be called to
-// initialize this memory allocated.
-//
-// So GlibcMemoryAPIRule is used to migrate malloc/free to C++ new/delete
-// instead in the following:
-// ...
-// sycl::event *kernelEvent = new sycl::event[n_streams];
-// ...
-// delete[] kernelEvent
-// clang-format on
-class GlibcMemoryAPIRule : public NamedMigrationRule<GlibcMemoryAPIRule> {
-public:
-  void registerMatcher(ast_matchers::MatchFinder &MF) override;
-  void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
-
-private:
-  template <typename T> const T *getAncestor(const Stmt *CE);
-  void processMalloc(const Stmt *ReplStmt, const DeclaratorDecl *VD,
-                     const CallExpr *CE);
-  void processFree(const CallExpr *CE);
-};
-
 /// Migration rule for __constant__/__shared__/__device__ memory variables.
 class MemVarRule : public NamedMigrationRule<MemVarRule> {
 public:
@@ -1478,7 +1327,6 @@ public:
   void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
 
 private:
-  void processDeref(const Stmt *S, ASTContext &Context);
   void previousHCurrentD(const VarDecl *VD, tooling::Replacement &R);
   void previousDCurrentH(const VarDecl *VD, tooling::Replacement &R);
   void removeHostConstantWarning(tooling::Replacement &R);
@@ -1869,13 +1717,6 @@ private:
   std::map<const Stmt *, bool> ProcessedBO;
 };
 
-template <typename T> class RuleRegister {
-public:
-  RuleRegister(const char *ID, const std::string &Name) {
-    ASTTraversalMetaInfo::registerRule(ID, Name, [] { return new T; });
-  }
-};
-
 /// CXXNewExprRule is to migrate types in C++ new expressions, e.g.
 /// "new cudaStream_t[10]" => "new queue_p[10]"
 /// "new cudaStream_t" => "new queue_p"
@@ -1897,12 +1738,6 @@ public:
   void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
 };
 
-class ThrustVarRule : public NamedMigrationRule<ThrustVarRule> {
-public:
-  void registerMatcher(ast_matchers::MatchFinder &MF) override;
-  void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
-};
-
 class PreDefinedStreamHandleRule
     : public NamedMigrationRule<PreDefinedStreamHandleRule> {
 public:
@@ -1914,17 +1749,6 @@ class FFTFunctionCallRule : public NamedMigrationRule<FFTFunctionCallRule> {
 public:
   void registerMatcher(ast_matchers::MatchFinder &MF) override;
   void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
-
-private:
-  void processFunctionPointer(const VarDecl *VD);
-  void processFunctionPointerAssignment(const BinaryOperator *BO);
-  void prepareFEAInfo(std::string IndentStr, std::string FuncName,
-                      std::string FuncPtrName,
-                      LibraryMigrationLocations Locations,
-                      LibraryMigrationFlags Flags, SourceLocation SL);
-  std::vector<std::string> PrefixStmts;
-  std::string IndentStr;
-  std::string CallExprRepl;
 };
 
 class AsmRule : public NamedMigrationRule<AsmRule> {
@@ -1962,11 +1786,17 @@ public:
   void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
 };
 
-#define REGISTER_RULE(TYPE_NAME)                                               \
-  RuleRegister<TYPE_NAME> g_##TYPE_NAME(&TYPE_NAME::ID, #TYPE_NAME);
+class CudaStreamCastRule : public NamedMigrationRule<CudaStreamCastRule> {
+public:
+  void registerMatcher(ast_matchers::MatchFinder &MF) override;
+  void runRule(const ast_matchers::MatchFinder::MatchResult &Result);
+};
 
 TextModification *replaceText(SourceLocation Begin, SourceLocation End,
                               std::string &&Str, const SourceManager &SM);
+
+TextModification *removeArg(const CallExpr *C, unsigned n,
+                            const SourceManager &SM) ;
 } // namespace dpct
 } // namespace clang
 #endif // DPCT_AST_TRAVERSAL_H

@@ -6,13 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Dialect/Vector/Utils/VectorUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/PatternMatch.h"
 
 using namespace mlir;
 using namespace mlir::vector;
@@ -45,14 +46,14 @@ static Value extractOne(PatternRewriter &rewriter, Location loc, Value vector,
 /// When ranks are different, InsertStridedSlice needs to extract a properly
 /// ranked vector from the destination vector into which to insert. This pattern
 /// only takes care of this extraction part and forwards the rest to
-/// [VectorInsertStridedSliceOpSameRankRewritePattern].
+/// [ConvertSameRankInsertStridedSliceIntoShuffle].
 ///
 /// For a k-D source and n-D destination vector (k < n), we emit:
 ///   1. ExtractOp to extract the (unique) (n-1)-D subvector into which to
 ///      insert the k-D source.
 ///   2. k-D -> (n-1)-D InsertStridedSlice op
 ///   3. InsertOp that is the reverse of 1.
-class VectorInsertStridedSliceOpDifferentRankRewritePattern
+class DecomposeDifferentRankInsertStridedSlice
     : public OpRewritePattern<InsertStridedSliceOp> {
 public:
   using OpRewritePattern<InsertStridedSliceOp>::OpRewritePattern;
@@ -102,7 +103,7 @@ public:
 ///   2. InsertStridedSlice (k-1)-D into (n-1)-D
 ///   3. the destination subvector is inserted back in the proper place
 ///   3. InsertOp that is the reverse of 1.
-class VectorInsertStridedSliceOpSameRankRewritePattern
+class ConvertSameRankInsertStridedSliceIntoShuffle
     : public OpRewritePattern<InsertStridedSliceOp> {
 public:
   using OpRewritePattern<InsertStridedSliceOp>::OpRewritePattern;
@@ -193,11 +194,95 @@ public:
   }
 };
 
-/// Progressive lowering of ExtractStridedSliceOp to either:
-///   1. single offset extract as a direct vector::ShuffleOp.
-///   2. ExtractOp/ExtractElementOp + lower rank ExtractStridedSliceOp +
-///      InsertOp/InsertElementOp for the n-D case.
-class VectorExtractStridedSliceOpRewritePattern
+/// RewritePattern for ExtractStridedSliceOp where source and destination
+/// vectors are 1-D. For such cases, we can lower it to a ShuffleOp.
+class Convert1DExtractStridedSliceIntoShuffle
+    : public OpRewritePattern<ExtractStridedSliceOp> {
+public:
+  using OpRewritePattern<ExtractStridedSliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ExtractStridedSliceOp op,
+                                PatternRewriter &rewriter) const override {
+    auto dstType = op.getType();
+
+    assert(!op.getOffsets().getValue().empty() && "Unexpected empty offsets");
+
+    int64_t offset =
+        op.getOffsets().getValue().front().cast<IntegerAttr>().getInt();
+    int64_t size =
+        op.getSizes().getValue().front().cast<IntegerAttr>().getInt();
+    int64_t stride =
+        op.getStrides().getValue().front().cast<IntegerAttr>().getInt();
+
+    assert(dstType.getElementType().isSignlessIntOrIndexOrFloat());
+
+    // Single offset can be more efficiently shuffled.
+    if (op.getOffsets().getValue().size() != 1)
+      return failure();
+
+    SmallVector<int64_t, 4> offsets;
+    offsets.reserve(size);
+    for (int64_t off = offset, e = offset + size * stride; off < e;
+         off += stride)
+      offsets.push_back(off);
+    rewriter.replaceOpWithNewOp<ShuffleOp>(op, dstType, op.getVector(),
+                                           op.getVector(),
+                                           rewriter.getI64ArrayAttr(offsets));
+    return success();
+  }
+};
+
+/// For a 1-D ExtractStridedSlice, breaks it down into a chain of Extract ops
+/// to extract each element from the source, and then a chain of Insert ops
+/// to insert to the target vector.
+class Convert1DExtractStridedSliceIntoExtractInsertChain final
+    : public OpRewritePattern<ExtractStridedSliceOp> {
+public:
+  Convert1DExtractStridedSliceIntoExtractInsertChain(
+      MLIRContext *context,
+      std::function<bool(ExtractStridedSliceOp)> controlFn,
+      PatternBenefit benefit)
+      : OpRewritePattern(context, benefit), controlFn(std::move(controlFn)) {}
+
+  LogicalResult matchAndRewrite(ExtractStridedSliceOp op,
+                                PatternRewriter &rewriter) const override {
+    if (controlFn && !controlFn(op))
+      return failure();
+
+    // Only handle 1-D cases.
+    if (op.getOffsets().getValue().size() != 1)
+      return failure();
+
+    int64_t offset =
+        op.getOffsets().getValue().front().cast<IntegerAttr>().getInt();
+    int64_t size =
+        op.getSizes().getValue().front().cast<IntegerAttr>().getInt();
+    int64_t stride =
+        op.getStrides().getValue().front().cast<IntegerAttr>().getInt();
+
+    Location loc = op.getLoc();
+    SmallVector<Value> elements;
+    elements.reserve(size);
+    for (int64_t i = offset, e = offset + size * stride; i < e; i += stride)
+      elements.push_back(rewriter.create<ExtractOp>(loc, op.getVector(), i));
+
+    Value result = rewriter.create<arith::ConstantOp>(
+        loc, rewriter.getZeroAttr(op.getType()));
+    for (int64_t i = 0; i < size; ++i)
+      result = rewriter.create<InsertOp>(loc, elements[i], result, i);
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+
+private:
+  std::function<bool(ExtractStridedSliceOp)> controlFn;
+};
+
+/// RewritePattern for ExtractStridedSliceOp where the source vector is n-D.
+/// For such cases, we can rewrite it to ExtractOp/ExtractElementOp + lower
+/// rank ExtractStridedSliceOp + InsertOp/InsertElementOp for the n-D case.
+class DecomposeNDExtractStridedSlice
     : public OpRewritePattern<ExtractStridedSliceOp> {
 public:
   using OpRewritePattern<ExtractStridedSliceOp>::OpRewritePattern;
@@ -225,18 +310,10 @@ public:
     auto elemType = dstType.getElementType();
     assert(elemType.isSignlessIntOrIndexOrFloat());
 
-    // Single offset can be more efficiently shuffled.
-    if (op.getOffsets().getValue().size() == 1) {
-      SmallVector<int64_t, 4> offsets;
-      offsets.reserve(size);
-      for (int64_t off = offset, e = offset + size * stride; off < e;
-           off += stride)
-        offsets.push_back(off);
-      rewriter.replaceOpWithNewOp<ShuffleOp>(op, dstType, op.getVector(),
-                                             op.getVector(),
-                                             rewriter.getI64ArrayAttr(offsets));
-      return success();
-    }
+    // Single offset can be more efficiently shuffled. It's handled in
+    // Convert1DExtractStridedSliceIntoShuffle.
+    if (op.getOffsets().getValue().size() == 1)
+      return failure();
 
     // Extract/insert on a lower ranked extract strided slice op.
     Value zero = rewriter.create<arith::ConstantOp>(
@@ -256,11 +333,26 @@ public:
   }
 };
 
+void vector::populateVectorInsertExtractStridedSliceDecompositionPatterns(
+    RewritePatternSet &patterns, PatternBenefit benefit) {
+  patterns.add<DecomposeDifferentRankInsertStridedSlice,
+               DecomposeNDExtractStridedSlice>(patterns.getContext(), benefit);
+}
+
+void vector::populateVectorExtractStridedSliceToExtractInsertChainPatterns(
+    RewritePatternSet &patterns,
+    std::function<bool(ExtractStridedSliceOp)> controlFn,
+    PatternBenefit benefit) {
+  patterns.add<Convert1DExtractStridedSliceIntoExtractInsertChain>(
+      patterns.getContext(), std::move(controlFn), benefit);
+}
+
 /// Populate the given list with patterns that convert from Vector to LLVM.
-void mlir::vector::populateVectorInsertExtractStridedSliceTransforms(
-    RewritePatternSet &patterns) {
-  patterns.add<VectorInsertStridedSliceOpDifferentRankRewritePattern,
-               VectorInsertStridedSliceOpSameRankRewritePattern,
-               VectorExtractStridedSliceOpRewritePattern>(
-      patterns.getContext());
+void vector::populateVectorInsertExtractStridedSliceTransforms(
+    RewritePatternSet &patterns, PatternBenefit benefit) {
+  populateVectorInsertExtractStridedSliceDecompositionPatterns(patterns,
+                                                               benefit);
+  patterns.add<ConvertSameRankInsertStridedSliceIntoShuffle,
+               Convert1DExtractStridedSliceIntoShuffle>(patterns.getContext(),
+                                                        benefit);
 }

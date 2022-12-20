@@ -46,6 +46,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include <cassert>
 #include <memory>
+#include <optional>
 #include <string>
 
 using namespace llvm;
@@ -134,6 +135,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializePowerPCTarget() {
   initializePPCGenScalarMASSEntriesPass(PR);
   initializePPCExpandAtomicPseudoPass(PR);
   initializeGlobalISel(PR);
+  initializePPCCTRLoopsPass(PR);
 }
 
 static bool isLittleEndianTriple(const Triple &T) {
@@ -244,11 +246,11 @@ static PPCTargetMachine::PPCABI computeTargetABI(const Triple &TT,
 }
 
 static Reloc::Model getEffectiveRelocModel(const Triple &TT,
-                                           Optional<Reloc::Model> RM) {
-  assert((!TT.isOSAIX() || !RM.hasValue() || *RM == Reloc::PIC_) &&
+                                           std::optional<Reloc::Model> RM) {
+  assert((!TT.isOSAIX() || !RM || *RM == Reloc::PIC_) &&
          "Invalid relocation model for AIX.");
 
-  if (RM.hasValue())
+  if (RM)
     return *RM;
 
   // Big Endian PPC and AIX default to PIC.
@@ -259,9 +261,9 @@ static Reloc::Model getEffectiveRelocModel(const Triple &TT,
   return Reloc::Static;
 }
 
-static CodeModel::Model getEffectivePPCCodeModel(const Triple &TT,
-                                                 Optional<CodeModel::Model> CM,
-                                                 bool JIT) {
+static CodeModel::Model
+getEffectivePPCCodeModel(const Triple &TT, std::optional<CodeModel::Model> CM,
+                         bool JIT) {
   if (CM) {
     if (*CM == CodeModel::Tiny)
       report_fatal_error("Target does not support the tiny CodeModel", false);
@@ -323,8 +325,8 @@ static ScheduleDAGInstrs *createPPCPostMachineScheduler(
 PPCTargetMachine::PPCTargetMachine(const Target &T, const Triple &TT,
                                    StringRef CPU, StringRef FS,
                                    const TargetOptions &Options,
-                                   Optional<Reloc::Model> RM,
-                                   Optional<CodeModel::Model> CM,
+                                   std::optional<Reloc::Model> RM,
+                                   std::optional<CodeModel::Model> CM,
                                    CodeGenOpt::Level OL, bool JIT)
     : LLVMTargetMachine(T, getDataLayoutString(TT), TT, CPU,
                         computeFSAdditions(FS, OL, TT), Options,
@@ -499,6 +501,11 @@ bool PPCPassConfig::addInstSelector() {
 }
 
 void PPCPassConfig::addMachineSSAOptimization() {
+  // Run CTR loops pass before any cfg modification pass to prevent the
+  // canonical form of hardware loop from being destroied.
+  if (!DisableCTRLoops && getOptLevel() != CodeGenOpt::None)
+    addPass(createPPCCTRLoopsPass());
+
   // PPCBranchCoalescingPass need to be done before machine sinking
   // since it merges empty blocks.
   if (EnableBranchCoalescing && getOptLevel() != CodeGenOpt::None)

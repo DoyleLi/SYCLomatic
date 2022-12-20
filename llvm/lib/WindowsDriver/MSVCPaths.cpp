@@ -94,18 +94,18 @@ static bool getWindows10SDKVersionFromPath(llvm::vfs::FileSystem &VFS,
 }
 
 static bool getWindowsSDKDirViaCommandLine(
-    llvm::vfs::FileSystem &VFS, llvm::Optional<llvm::StringRef> WinSdkDir,
-    llvm::Optional<llvm::StringRef> WinSdkVersion,
-    llvm::Optional<llvm::StringRef> WinSysRoot, std::string &Path, int &Major,
+    llvm::vfs::FileSystem &VFS, std::optional<llvm::StringRef> WinSdkDir,
+    std::optional<llvm::StringRef> WinSdkVersion,
+    std::optional<llvm::StringRef> WinSysRoot, std::string &Path, int &Major,
     std::string &Version) {
-  if (WinSdkDir.hasValue() || WinSysRoot.hasValue()) {
+  if (WinSdkDir || WinSysRoot) {
     // Don't validate the input; trust the value supplied by the user.
     // The motivation is to prevent unnecessary file and registry access.
     llvm::VersionTuple SDKVersion;
-    if (WinSdkVersion.hasValue())
+    if (WinSdkVersion)
       SDKVersion.tryParse(*WinSdkVersion);
 
-    if (WinSysRoot.hasValue()) {
+    if (WinSysRoot) {
       llvm::SmallString<128> SDKPath(*WinSysRoot);
       llvm::sys::path::append(SDKPath, "Windows Kits");
       if (!SDKVersion.empty())
@@ -393,9 +393,9 @@ bool useUniversalCRT(ToolsetLayout VSLayout, const std::string &VCToolChainPath,
   return !VFS.exists(TestPath);
 }
 
-bool getWindowsSDKDir(vfs::FileSystem &VFS, Optional<StringRef> WinSdkDir,
-                      Optional<StringRef> WinSdkVersion,
-                      Optional<StringRef> WinSysRoot, std::string &Path,
+bool getWindowsSDKDir(vfs::FileSystem &VFS, std::optional<StringRef> WinSdkDir,
+                      std::optional<StringRef> WinSdkVersion,
+                      std::optional<StringRef> WinSysRoot, std::string &Path,
                       int &Major, std::string &WindowsSDKIncludeVersion,
                       std::string &WindowsSDKLibVersion) {
   // Trust /winsdkdir and /winsdkversion if present.
@@ -448,10 +448,11 @@ bool getWindowsSDKDir(vfs::FileSystem &VFS, Optional<StringRef> WinSdkDir,
   return false;
 }
 
-bool getUniversalCRTSdkDir(vfs::FileSystem &VFS, Optional<StringRef> WinSdkDir,
-                           Optional<StringRef> WinSdkVersion,
-                           Optional<StringRef> WinSysRoot, std::string &Path,
-                           std::string &UCRTVersion) {
+bool getUniversalCRTSdkDir(vfs::FileSystem &VFS,
+                           std::optional<StringRef> WinSdkDir,
+                           std::optional<StringRef> WinSdkVersion,
+                           std::optional<StringRef> WinSysRoot,
+                           std::string &Path, std::string &UCRTVersion) {
   // If /winsdkdir is passed, use it as location for the UCRT too.
   // FIXME: Should there be a dedicated /ucrtdir to override /winsdkdir?
   int Major;
@@ -473,18 +474,18 @@ bool getUniversalCRTSdkDir(vfs::FileSystem &VFS, Optional<StringRef> WinSdkDir,
 }
 
 bool findVCToolChainViaCommandLine(vfs::FileSystem &VFS,
-                                   Optional<StringRef> VCToolsDir,
-                                   Optional<StringRef> VCToolsVersion,
-                                   Optional<StringRef> WinSysRoot,
+                                   std::optional<StringRef> VCToolsDir,
+                                   std::optional<StringRef> VCToolsVersion,
+                                   std::optional<StringRef> WinSysRoot,
                                    std::string &Path, ToolsetLayout &VSLayout) {
   // Don't validate the input; trust the value supplied by the user.
   // The primary motivation is to prevent unnecessary file and registry access.
-  if (VCToolsDir.hasValue() || WinSysRoot.hasValue()) {
-    if (WinSysRoot.hasValue()) {
+  if (VCToolsDir || WinSysRoot) {
+    if (WinSysRoot) {
       SmallString<128> ToolsPath(*WinSysRoot);
       sys::path::append(ToolsPath, "VC", "Tools", "MSVC");
       std::string ToolsVersion;
-      if (VCToolsVersion.hasValue())
+      if (VCToolsVersion)
         ToolsVersion = VCToolsVersion->str();
       else
         ToolsVersion = getHighestNumericTupleInDirectory(VFS, ToolsPath);

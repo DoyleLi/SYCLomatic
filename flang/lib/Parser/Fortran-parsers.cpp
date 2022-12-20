@@ -168,10 +168,13 @@ TYPE_CONTEXT_PARSER("type spec"_en_US,
 // for TYPE (...), rather than putting the alternatives within it, which
 // would fail on "TYPE(real_derived)" with a misrecognition of "real" as an
 // intrinsic-type-spec.
+// N.B. TYPE(x) is a derived type if x is a one-word extension intrinsic
+// type (BYTE or DOUBLECOMPLEX), not the extension intrinsic type.
 TYPE_CONTEXT_PARSER("declaration type spec"_en_US,
     construct<DeclarationTypeSpec>(intrinsicTypeSpec) ||
         "TYPE" >>
-            (parenthesized(construct<DeclarationTypeSpec>(intrinsicTypeSpec)) ||
+            (parenthesized(construct<DeclarationTypeSpec>(
+                 !"DOUBLECOMPLEX"_tok >> !"BYTE"_tok >> intrinsicTypeSpec)) ||
                 parenthesized(construct<DeclarationTypeSpec>(
                     construct<DeclarationTypeSpec::Type>(derivedTypeSpec))) ||
                 construct<DeclarationTypeSpec>(
@@ -209,7 +212,7 @@ TYPE_CONTEXT_PARSER("intrinsic type spec"_en_US,
             "LOGICAL" >> maybe(kindSelector))),
         extension<LanguageFeature::DoubleComplex>(
             "nonstandard usage: DOUBLE COMPLEX"_port_en_US,
-            construct<IntrinsicTypeSpec>("DOUBLE COMPLEX" >>
+            construct<IntrinsicTypeSpec>("DOUBLE COMPLEX"_sptok >>
                 construct<IntrinsicTypeSpec::DoubleComplex>())),
         extension<LanguageFeature::Byte>("nonstandard usage: BYTE"_port_en_US,
             construct<IntrinsicTypeSpec>(construct<IntegerTypeSpec>(
@@ -381,7 +384,7 @@ TYPE_PARSER(construct<PrivateOrSequence>(Parser<PrivateStmt>{}) ||
 
 // R730 end-type-stmt -> END TYPE [type-name]
 TYPE_PARSER(construct<EndTypeStmt>(
-    recovery("END TYPE" >> maybe(name), endStmtErrorRecovery)))
+    recovery("END TYPE" >> maybe(name), namedConstructEndStmtErrorRecovery)))
 
 // R731 sequence-stmt -> SEQUENCE
 TYPE_PARSER(construct<SequenceStmt>("SEQUENCE"_tok))
@@ -519,6 +522,9 @@ TYPE_CONTEXT_PARSER("type bound procedure binding"_en_US,
 // R749 type-bound-procedure-stmt ->
 //        PROCEDURE [[, bind-attr-list] ::] type-bound-proc-decl-list |
 //        PROCEDURE ( interface-name ) , bind-attr-list :: binding-name-list
+// The "::" is required by the standard (C768) in the first production if
+// any type-bound-proc-decl has a "=>', but it's not strictly necessary to
+// avoid a bad parse.
 TYPE_CONTEXT_PARSER("type bound PROCEDURE statement"_en_US,
     "PROCEDURE" >>
         (construct<TypeBoundProcedureStmt>(
@@ -528,6 +534,15 @@ TYPE_CONTEXT_PARSER("type bound PROCEDURE statement"_en_US,
                      "," >> nonemptyList(Parser<BindAttr>{}), ok),
                  localRecovery("expected list of binding names"_err_en_US,
                      "::" >> listOfNames, SkipTo<'\n'>{}))) ||
+            construct<TypeBoundProcedureStmt>(construct<
+                TypeBoundProcedureStmt::WithoutInterface>(
+                pure<std::list<BindAttr>>(),
+                nonemptyList(
+                    "expected type bound procedure declarations"_err_en_US,
+                    construct<TypeBoundProcDecl>(name,
+                        maybe(extension<LanguageFeature::MissingColons>(
+                            "type-bound procedure statement should have '::' if it has '=>'"_port_en_US,
+                            "=>" >> name)))))) ||
             construct<TypeBoundProcedureStmt>(
                 construct<TypeBoundProcedureStmt::WithoutInterface>(
                     optionalListBeforeColons(Parser<BindAttr>{}),
@@ -604,7 +619,7 @@ TYPE_PARSER(
     construct<Enumerator>(namedConstant, maybe("=" >> scalarIntConstantExpr)))
 
 // R763 end-enum-stmt -> END ENUM
-TYPE_PARSER(recovery("END ENUM"_tok, "END" >> SkipPast<'\n'>{}) >>
+TYPE_PARSER(recovery("END ENUM"_tok, constructEndStmtErrorRecovery) >>
     construct<EndEnumStmt>())
 
 // R801 type-declaration-stmt ->
@@ -755,8 +770,8 @@ TYPE_PARSER(construct<AccessStmt>(accessSpec,
             Parser<AccessId>{}))))
 
 // R828 access-id -> access-name | generic-spec
-TYPE_PARSER(construct<AccessId>(indirect(genericSpec)) ||
-    construct<AccessId>(name)) // initially ambiguous with genericSpec
+// "access-name" is ambiguous with "generic-spec"
+TYPE_PARSER(construct<AccessId>(indirect(genericSpec)))
 
 // R829 allocatable-stmt -> ALLOCATABLE [::] allocatable-decl-list
 TYPE_PARSER(construct<AllocatableStmt>("ALLOCATABLE" >> maybe("::"_tok) >>
@@ -1071,6 +1086,9 @@ TYPE_PARSER(
 
 TYPE_PARSER(construct<CharLiteralConstantSubstring>(
     charLiteralConstant, parenthesized(Parser<SubstringRange>{})))
+
+TYPE_PARSER(sourced(construct<SubstringInquiry>(Parser<Substring>{}) /
+    ("%LEN"_tok || "%KIND"_tok)))
 
 // R910 substring-range -> [scalar-int-expr] : [scalar-int-expr]
 TYPE_PARSER(construct<SubstringRange>(

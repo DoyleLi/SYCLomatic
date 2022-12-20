@@ -176,6 +176,9 @@ public:
   /// to the number of characters per the Fortran KIND.
   mlir::Value readLengthFromBox(mlir::Value box);
 
+  /// Same as readLengthFromBox but the CharacterType is provided.
+  mlir::Value readLengthFromBox(mlir::Value box, fir::CharacterType charTy);
+
 private:
   /// FIXME: the implementation also needs a clean-up now that
   /// CharBoxValue are better propagated.
@@ -204,8 +207,8 @@ private:
 mlir::Type getCharacterProcedureTupleType(mlir::Type funcPointerType);
 
 /// Create a tuple<addr, len> given \p addr and \p len as well as the tuple
-/// type \p argTy. \p addr must be any function address, and \p len must be
-/// any integer. Converts will be inserted if needed if \addr and \p len
+/// type \p argTy. \p addr must be any function address, and \p len may be any
+/// integer or nullptr. Converts will be inserted if needed if \addr and \p len
 /// types are not the same as the one inside the tuple type \p tupleType.
 mlir::Value createCharacterProcedureTuple(fir::FirOpBuilder &builder,
                                           mlir::Location loc,

@@ -1,7 +1,7 @@
 // RUN: dpct --format-range=none --usm-level=none -extra-arg-before=-std=c++14 -out-root %T/curand-device %s --cuda-include-path="%cuda-path/include" -- -x cuda --cuda-host-only
 // RUN: FileCheck --input-file %T/curand-device/curand-device.dp.cpp --match-full-lines %s
 
-//CHECK: #include <CL/sycl.hpp>
+//CHECK: #include <sycl/sycl.hpp>
 //CHECK-NEXT: #include <dpct/dpct.hpp>
 //CHECK-NEXT: #include <oneapi/mkl.hpp>
 //CHECK-NEXT: #include <oneapi/mkl/rng/device.hpp>
@@ -76,7 +76,10 @@ int main(int argc, char **argv) {
   int *dOut;
   //CHECK:q_ct1.submit(
   //CHECK-NEXT:  [&](sycl::handler &cgh) {
-  //CHECK-NEXT:    sycl::accessor<int, 1, sycl::access_mode::read_write, sycl::access::target::local> counter_acc_ct1(sycl::range<1>(32/*WARP_SIZE*/), cgh);
+  //CHECK-NEXT:    /*
+  //CHECK-NEXT:    DPCT1101:{{[0-9]+}}: 'WARP_SIZE' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  //CHECK-NEXT:    */
+  //CHECK-NEXT:    sycl::local_accessor<int, 1> counter_acc_ct1(sycl::range<1>(32/*WARP_SIZE*/), cgh);
   //CHECK-NEXT:    dpct::access_wrapper<int *> dOut_acc_ct0(dOut, cgh);
   //CHECK-EMPTY:
   //CHECK-NEXT:    cgh.parallel_for(
@@ -124,7 +127,7 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-// CHECK: void my_kernel5(          int *a  ) {
+// CHECK: void my_kernel5(          int &a  ) {
 __global__ void my_kernel5(          void  ) {
   __shared__ int a;
 }

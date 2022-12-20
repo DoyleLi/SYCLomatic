@@ -4,10 +4,10 @@
 // RUN: FileCheck --input-file %T/thrust-cast/thrust-cast.dp.cpp --match-full-lines %s
 // CHECK: #include <oneapi/dpl/execution>
 // CHECK-NEXT: #include <oneapi/dpl/algorithm>
-// CHECK-NEXT: #include <CL/sycl.hpp>
+// CHECK-NEXT: #include <sycl/sycl.hpp>
 // CHECK-NEXT: #include <dpct/dpct.hpp>
-// CHECK-NEXT: #include <dpct/dpl_utils.hpp>
 // CHECK-NEXT: #include <complex>
+// CHECK-NEXT: #include <dpct/dpl_utils.hpp>
 #include <thrust/complex.h>
 #include <thrust/device_ptr.h>
 #include <thrust/device_malloc.h>

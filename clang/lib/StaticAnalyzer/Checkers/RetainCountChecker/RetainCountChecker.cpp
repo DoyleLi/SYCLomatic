@@ -45,7 +45,7 @@ static ProgramStateRef removeRefBinding(ProgramStateRef State, SymbolRef Sym) {
 
 void RefVal::print(raw_ostream &Out) const {
   if (!T.isNull())
-    Out << "Tracked " << T.getAsString() << " | ";
+    Out << "Tracked " << T << " | ";
 
   switch (getKind()) {
     default: llvm_unreachable("Invalid RefVal kind");
@@ -420,7 +420,7 @@ static Optional<RefVal> refValFromRetEffect(RetEffect RE,
     return RefVal::makeNotOwned(RE.getObjKind(), ResultTy);
   }
 
-  return None;
+  return std::nullopt;
 }
 
 static bool isPointerToObject(QualType QT) {
@@ -767,7 +767,7 @@ ProgramStateRef RetainCountChecker::updateSymbol(ProgramStateRef state,
         break;
       }
 
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
 
     case DoNothing:
       return state;

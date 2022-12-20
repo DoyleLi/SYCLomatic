@@ -55,10 +55,10 @@ CUresult &&var4 = std::move(var1);
 }
 
 {
-// CHECK: sycl::event var1;
-// CHECK-NEXT: sycl::event *var2;
-// CHECK-NEXT: sycl::event &var3 = var1;
-// CHECK-NEXT: sycl::event &&var4 = std::move(var1);
+// CHECK: dpct::event_ptr var1;
+// CHECK-NEXT: dpct::event_ptr *var2;
+// CHECK-NEXT: dpct::event_ptr &var3 = var1;
+// CHECK-NEXT: dpct::event_ptr &&var4 = std::move(var1);
 cudaEvent_t var1;
 cudaEvent_t *var2;
 cudaEvent_t &var3 = var1;
@@ -66,10 +66,10 @@ cudaEvent_t &&var4 = std::move(var1);
 }
 
 {
-// CHECK: sycl::queue* var1;
-// CHECK-NEXT: sycl::queue* *var2;
-// CHECK-NEXT: sycl::queue* &var3 = var1;
-// CHECK-NEXT: sycl::queue* &&var4 = std::move(var1);
+// CHECK: dpct::queue_ptr var1;
+// CHECK-NEXT: dpct::queue_ptr *var2;
+// CHECK-NEXT: dpct::queue_ptr &var3 = var1;
+// CHECK-NEXT: dpct::queue_ptr &&var4 = std::move(var1);
 cublasHandle_t var1;
 cublasHandle_t *var2;
 cublasHandle_t &var3 = var1;
@@ -220,10 +220,10 @@ cufftResult_t &&var4 = std::move(var1);
 }
 
 {
-// CHECK: sycl::queue *var1;
-// CHECK-NEXT: sycl::queue **var2;
-// CHECK-NEXT: sycl::queue * &var3 = var1;
-// CHECK-NEXT: sycl::queue *&&var4 = std::move(var1);
+// CHECK: dpct::queue_ptr var1;
+// CHECK-NEXT: dpct::queue_ptr *var2;
+// CHECK-NEXT: dpct::queue_ptr &var3 = var1;
+// CHECK-NEXT: dpct::queue_ptr &&var4 = std::move(var1);
 cudaStream_t var1;
 cudaStream_t *var2;
 cudaStream_t &var3 = var1;
@@ -267,15 +267,15 @@ void case_2(void) {
 }
 
 {
-// CHECK:  new sycl::event();
-// CHECK-NEXT:  new sycl::event *();
+// CHECK:  new dpct::event_ptr();
+// CHECK-NEXT:  new dpct::event_ptr *();
   new cudaEvent_t();
   new cudaEvent_t *();
 }
 
 {
-// CHECK:  new sycl::queue*();
-// CHECK-NEXT:  new sycl::queue* *();
+// CHECK:  new dpct::queue_ptr();
+// CHECK-NEXT:  new dpct::queue_ptr *();
   new cublasHandle_t();
   new cublasHandle_t *();
 }
@@ -372,8 +372,8 @@ void case_2(void) {
 }
 
 {
-// CHECK:  new sycl::queue *();
-// CHECK-NEXT:  new sycl::queue * *();
+// CHECK:  new dpct::queue_ptr();
+// CHECK-NEXT:  new dpct::queue_ptr *();
   new cudaStream_t();
   new cudaStream_t *();
 }
@@ -413,16 +413,16 @@ CUresult foo9();
 CUresult *foo10();
 CUresult &foo11();
 
-// CHECK: sycl::event foo12();
-// CHECK-NEXT: sycl::event *foo13();
-// CHECK-NEXT: sycl::event &foo14();
+// CHECK: dpct::event_ptr foo12();
+// CHECK-NEXT: dpct::event_ptr *foo13();
+// CHECK-NEXT: dpct::event_ptr &foo14();
 cudaEvent_t foo12();
 cudaEvent_t *foo13();
 cudaEvent_t &foo14();
 
-// CHECK: sycl::queue* foo15();
-// CHECK-NEXT: sycl::queue* *foo16();
-// CHECK-NEXT: sycl::queue* &foo17();
+// CHECK: dpct::queue_ptr foo15();
+// CHECK-NEXT: dpct::queue_ptr *foo16();
+// CHECK-NEXT: dpct::queue_ptr &foo17();
 cublasHandle_t foo15();
 cublasHandle_t *foo16();
 cublasHandle_t &foo17();
@@ -518,9 +518,9 @@ cufftResult_t foo54();
 cufftResult_t *foo55();
 cufftResult_t &foo56();
 
-// CHECK: sycl::queue * foo57();
-// CHECK-NEXT: sycl::queue * *foo58();
-// CHECK-NEXT: sycl::queue * &foo59();
+// CHECK: dpct::queue_ptr foo57();
+// CHECK-NEXT: dpct::queue_ptr *foo58();
+// CHECK-NEXT: dpct::queue_ptr &foo59();
 cudaStream_t foo57();
 cudaStream_t *foo58();
 cudaStream_t &foo59();
@@ -561,19 +561,19 @@ template <> struct S<CUresult *> {};
 template <> struct S<CUresult &> {};
 template <> struct S<CUresult &&> {};
 
-// CHECK: template <> struct S<sycl::event> {};
-// CHECK-NEXT: template <> struct S<sycl::event *> {};
-// CHECK-NEXT: template <> struct S<sycl::event &> {};
-// CHECK-NEXT: template <> struct S<sycl::event &&> {};
+// CHECK: template <> struct S<dpct::event_ptr> {};
+// CHECK-NEXT: template <> struct S<dpct::event_ptr *> {};
+// CHECK-NEXT: template <> struct S<dpct::event_ptr &> {};
+// CHECK-NEXT: template <> struct S<dpct::event_ptr &&> {};
 template <> struct S<cudaEvent_t> {};
 template <> struct S<cudaEvent_t *> {};
 template <> struct S<cudaEvent_t &> {};
 template <> struct S<cudaEvent_t &&> {};
 
-// CHECK: template <> struct S<sycl::queue*> {};
-// CHECK-NEXT: template <> struct S<sycl::queue* *> {};
-// CHECK-NEXT: template <> struct S<sycl::queue* &> {};
-// CHECK-NEXT: template <> struct S<sycl::queue* &&> {};
+// CHECK: template <> struct S<dpct::queue_ptr> {};
+// CHECK-NEXT: template <> struct S<dpct::queue_ptr *> {};
+// CHECK-NEXT: template <> struct S<dpct::queue_ptr &> {};
+// CHECK-NEXT: template <> struct S<dpct::queue_ptr &&> {};
 template <> struct S<cublasHandle_t> {};
 template <> struct S<cublasHandle_t *> {};
 template <> struct S<cublasHandle_t &> {};
@@ -688,10 +688,10 @@ template <> struct S<cufftResult_t *> {};
 template <> struct S<cufftResult_t &> {};
 template <> struct S<cufftResult_t &&> {};
 
-// CHECK: template <> struct S<sycl::queue *> {};
-// CHECK-NEXT: template <> struct S<sycl::queue * *> {};
-// CHECK-NEXT: template <> struct S<sycl::queue * &> {};
-// CHECK-NEXT: template <> struct S<sycl::queue * &&> {};
+// CHECK: template <> struct S<dpct::queue_ptr> {};
+// CHECK-NEXT: template <> struct S<dpct::queue_ptr *> {};
+// CHECK-NEXT: template <> struct S<dpct::queue_ptr &> {};
+// CHECK-NEXT: template <> struct S<dpct::queue_ptr &&> {};
 template <> struct S<cudaStream_t> {};
 template <> struct S<cudaStream_t *> {};
 template <> struct S<cudaStream_t &> {};
@@ -738,19 +738,19 @@ template_foo<CUresult *>();
 template_foo<CUresult &>();
 template_foo<CUresult &&>();
 
-// CHECK: template_foo<sycl::event>();
-// CHECK-NEXT: template_foo<sycl::event *>();
-// CHECK-NEXT: template_foo<sycl::event &>();
-// CHECK-NEXT: template_foo<sycl::event &&>();
+// CHECK: template_foo<dpct::event_ptr>();
+// CHECK-NEXT: template_foo<dpct::event_ptr *>();
+// CHECK-NEXT: template_foo<dpct::event_ptr &>();
+// CHECK-NEXT: template_foo<dpct::event_ptr &&>();
 template_foo<cudaEvent_t>();
 template_foo<cudaEvent_t *>();
 template_foo<cudaEvent_t &>();
 template_foo<cudaEvent_t &&>();
 
-// CHECK: template_foo<sycl::queue*>();
-// CHECK-NEXT: template_foo<sycl::queue* *>();
-// CHECK-NEXT: template_foo<sycl::queue* &>();
-// CHECK-NEXT: template_foo<sycl::queue* &&>();
+// CHECK: template_foo<dpct::queue_ptr>();
+// CHECK-NEXT: template_foo<dpct::queue_ptr *>();
+// CHECK-NEXT: template_foo<dpct::queue_ptr &>();
+// CHECK-NEXT: template_foo<dpct::queue_ptr &&>();
 template_foo<cublasHandle_t>();
 template_foo<cublasHandle_t *>();
 template_foo<cublasHandle_t &>();
@@ -873,10 +873,10 @@ template_foo<cufftResult_t *>();
 template_foo<cufftResult_t &>();
 template_foo<cufftResult_t &&>();
 
-// CHECK: template_foo<sycl::queue *>();
-// CHECK-NEXT: template_foo<sycl::queue * *>();
-// CHECK-NEXT: template_foo<sycl::queue * &>();
-// CHECK-NEXT: template_foo<sycl::queue * &&>();
+// CHECK: template_foo<dpct::queue_ptr>();
+// CHECK-NEXT: template_foo<dpct::queue_ptr *>();
+// CHECK-NEXT: template_foo<dpct::queue_ptr &>();
+// CHECK-NEXT: template_foo<dpct::queue_ptr &&>();
 template_foo<cudaStream_t>();
 template_foo<cudaStream_t *>();
 template_foo<cudaStream_t &>();
@@ -931,19 +931,19 @@ using UT13 = CUresult *;
 using UT14 = CUresult &;
 using UT15 = CUresult &&;
 
-// CHECK: using UT16 = sycl::event;
-// CHECK-NEXT: using UT17 = sycl::event *;
-// CHECK-NEXT: using UT18 = sycl::event &;
-// CHECK-NEXT: using UT19 = sycl::event &&;
+// CHECK: using UT16 = dpct::event_ptr;
+// CHECK-NEXT: using UT17 = dpct::event_ptr *;
+// CHECK-NEXT: using UT18 = dpct::event_ptr &;
+// CHECK-NEXT: using UT19 = dpct::event_ptr &&;
 using UT16 = cudaEvent_t;
 using UT17 = cudaEvent_t *;
 using UT18 = cudaEvent_t &;
 using UT19 = cudaEvent_t &&;
 
-// CHECK: using UT20 = sycl::queue*;
-// CHECK-NEXT: using UT21 = sycl::queue* *;
-// CHECK-NEXT: using UT22 = sycl::queue* &;
-// CHECK-NEXT: using UT23 = sycl::queue* &&;
+// CHECK: using UT20 = dpct::queue_ptr;
+// CHECK-NEXT: using UT21 = dpct::queue_ptr *;
+// CHECK-NEXT: using UT22 = dpct::queue_ptr &;
+// CHECK-NEXT: using UT23 = dpct::queue_ptr &&;
 using UT20 = cublasHandle_t;
 using UT21 = cublasHandle_t *;
 using UT22 = cublasHandle_t &;
@@ -1066,10 +1066,10 @@ using UT73 = cufftResult_t *;
 using UT74 = cufftResult_t &;
 using UT75 = cufftResult_t &&;
 
-// CHECK: using UT76 = sycl::queue *;
-// CHECK-NEXT: using UT77 = sycl::queue * *;
-// CHECK-NEXT: using UT78 = sycl::queue * &;
-// CHECK-NEXT: using UT79 = sycl::queue * &&;
+// CHECK: using UT76 = dpct::queue_ptr;
+// CHECK-NEXT: using UT77 = dpct::queue_ptr *;
+// CHECK-NEXT: using UT78 = dpct::queue_ptr &;
+// CHECK-NEXT: using UT79 = dpct::queue_ptr &&;
 using UT76 = cudaStream_t;
 using UT77 = cudaStream_t *;
 using UT78 = cudaStream_t &;
@@ -1123,19 +1123,19 @@ typedef CUresult* T13;
 typedef CUresult& T14;
 typedef CUresult&& T15;
 
-// CHECK: typedef sycl::event T16;
-// CHECK-NEXT: typedef sycl::event* T17;
-// CHECK-NEXT: typedef sycl::event& T18;
-// CHECK-NEXT: typedef sycl::event&& T19;
+// CHECK: typedef dpct::event_ptr T16;
+// CHECK-NEXT: typedef dpct::event_ptr* T17;
+// CHECK-NEXT: typedef dpct::event_ptr& T18;
+// CHECK-NEXT: typedef dpct::event_ptr&& T19;
 typedef cudaEvent_t T16;
 typedef cudaEvent_t* T17;
 typedef cudaEvent_t& T18;
 typedef cudaEvent_t&& T19;
 
-// CHECK: typedef sycl::queue* T20;
-// CHECK-NEXT: typedef sycl::queue** T21;
-// CHECK-NEXT: typedef sycl::queue*& T22;
-// CHECK-NEXT: typedef sycl::queue*&& T23;
+// CHECK: typedef dpct::queue_ptr T20;
+// CHECK-NEXT: typedef dpct::queue_ptr* T21;
+// CHECK-NEXT: typedef dpct::queue_ptr& T22;
+// CHECK-NEXT: typedef dpct::queue_ptr&& T23;
 typedef cublasHandle_t T20;
 typedef cublasHandle_t* T21;
 typedef cublasHandle_t& T22;
@@ -1258,10 +1258,10 @@ typedef cufftResult_t* T73;
 typedef cufftResult_t& T74;
 typedef cufftResult_t&& T75;
 
-// CHECK: typedef sycl::queue * T76;
-// CHECK-NEXT: typedef sycl::queue ** T77;
-// CHECK-NEXT: typedef sycl::queue *& T78;
-// CHECK-NEXT: typedef sycl::queue *&& T79;
+// CHECK: typedef dpct::queue_ptr T76;
+// CHECK-NEXT: typedef dpct::queue_ptr* T77;
+// CHECK-NEXT: typedef dpct::queue_ptr& T78;
+// CHECK-NEXT: typedef dpct::queue_ptr&& T79;
 typedef cudaStream_t T76;
 typedef cudaStream_t* T77;
 typedef cudaStream_t& T78;
@@ -1361,10 +1361,10 @@ __device__ void foo_t(){
 }
 
 {
-// CHECK: #define T8_16 sycl::event
-// CHECK-NEXT: #define T8_17 sycl::event *
-// CHECK-NEXT: #define T8_18 sycl::event &
-// CHECK-NEXT: #define T8_19 sycl::event &&
+// CHECK: #define T8_16 dpct::event_ptr
+// CHECK-NEXT: #define T8_17 dpct::event_ptr *
+// CHECK-NEXT: #define T8_18 dpct::event_ptr &
+// CHECK-NEXT: #define T8_19 dpct::event_ptr &&
 // CHECK-NEXT:     T8_16 a1;
 // CHECK-NEXT:     T8_17 a2;
 // CHECK-NEXT:     T8_18 a3=a1;
@@ -1384,19 +1384,19 @@ __device__ void foo_t(){
 // CHECK: /*
 // CHECK-NEXT: DPCT1021:{{[0-9]+}}: Migration of cublasHandle_t in __global__ or __device__ function is not supported. You may need to redesign the code.
 // CHECK-NEXT: */
-// CHECK-NEXT: #define T8_20 sycl::queue*
+// CHECK-NEXT: #define T8_20 cublasHandle_t
 // CHECK-NEXT: /*
 // CHECK-NEXT: DPCT1021:{{[0-9]+}}: Migration of cublasHandle_t in __global__ or __device__ function is not supported. You may need to redesign the code.
 // CHECK-NEXT: */
-// CHECK-NEXT: #define T8_21 sycl::queue* *
+// CHECK-NEXT: #define T8_21 cublasHandle_t *
 // CHECK-NEXT: /*
 // CHECK-NEXT: DPCT1021:{{[0-9]+}}: Migration of cublasHandle_t in __global__ or __device__ function is not supported. You may need to redesign the code.
 // CHECK-NEXT: */
-// CHECK-NEXT: #define T8_22 sycl::queue* &
+// CHECK-NEXT: #define T8_22 cublasHandle_t &
 // CHECK-NEXT: /*
 // CHECK-NEXT: DPCT1021:{{[0-9]+}}: Migration of cublasHandle_t in __global__ or __device__ function is not supported. You may need to redesign the code.
 // CHECK-NEXT: */
-// CHECK-NEXT: #define T8_23 sycl::queue* &&
+// CHECK-NEXT: #define T8_23 cublasHandle_t &&
 // CHECK-NEXT:     T8_20 a1;
 // CHECK-NEXT:     T8_21 a2;
 // CHECK-NEXT:     T8_22 a3=a1;
@@ -1673,10 +1673,10 @@ __device__ void foo_t(){
 }
 
 {
-// CHECK: #define T8_76 sycl::queue *
-// CHECK-NEXT: #define T8_77 sycl::queue * *
-// CHECK-NEXT: #define T8_78 sycl::queue * &
-// CHECK-NEXT: #define T8_79 sycl::queue * &&
+// CHECK: #define T8_76 dpct::queue_ptr
+// CHECK-NEXT: #define T8_77 dpct::queue_ptr *
+// CHECK-NEXT: #define T8_78 dpct::queue_ptr &
+// CHECK-NEXT: #define T8_79 dpct::queue_ptr &&
 // CHECK-NEXT:     T8_76 a1;
 // CHECK-NEXT:     T8_77 a2;
 // CHECK-NEXT:     T8_78 a3=a1;
@@ -1735,19 +1735,19 @@ template <> void foo2(CUresult){}
 template <> void foo3(CUresult){}
 template <> void foo4(CUresult){}
 
-// CHECK: template <> void foo1(sycl::event){}
-// CHECK-NEXT: template <> void foo2(sycl::event){}
-// CHECK-NEXT: template <> void foo3(sycl::event){}
-// CHECK-NEXT: template <> void foo4(sycl::event){}
+// CHECK: template <> void foo1(dpct::event_ptr){}
+// CHECK-NEXT: template <> void foo2(dpct::event_ptr){}
+// CHECK-NEXT: template <> void foo3(dpct::event_ptr){}
+// CHECK-NEXT: template <> void foo4(dpct::event_ptr){}
 template <> void foo1(cudaEvent_t){}
 template <> void foo2(cudaEvent_t){}
 template <> void foo3(cudaEvent_t){}
 template <> void foo4(cudaEvent_t){}
 
-// CHECK: template <> void foo1(sycl::queue*){}
-// CHECK-NEXT: template <> void foo2(sycl::queue*){}
-// CHECK-NEXT: template <> void foo3(sycl::queue*){}
-// CHECK-NEXT: template <> void foo4(sycl::queue*){}
+// CHECK: template <> void foo1(dpct::queue_ptr){}
+// CHECK-NEXT: template <> void foo2(dpct::queue_ptr){}
+// CHECK-NEXT: template <> void foo3(dpct::queue_ptr){}
+// CHECK-NEXT: template <> void foo4(dpct::queue_ptr){}
 template <> void foo1(cublasHandle_t){}
 template <> void foo2(cublasHandle_t){}
 template <> void foo3(cublasHandle_t){}
@@ -1861,10 +1861,10 @@ template <> void foo2(cufftResult_t){}
 template <> void foo3(cufftResult_t){}
 template <> void foo4(cufftResult_t){}
 
-// CHECK: template <> void foo1(sycl::queue *){}
-// CHECK-NEXT: template <> void foo2(sycl::queue *){}
-// CHECK-NEXT: template <> void foo3(sycl::queue *){}
-// CHECK-NEXT: template <> void foo4(sycl::queue *){}
+// CHECK: template <> void foo1(dpct::queue_ptr){}
+// CHECK-NEXT: template <> void foo2(dpct::queue_ptr){}
+// CHECK-NEXT: template <> void foo3(dpct::queue_ptr){}
+// CHECK-NEXT: template <> void foo4(dpct::queue_ptr){}
 template <> void foo1(cudaStream_t){}
 template <> void foo2(cudaStream_t){}
 template <> void foo3(cudaStream_t){}
@@ -1875,9 +1875,9 @@ void foo_struct(void) {
 struct cudaDeviceProp d_t;
 }
 
-// CHECK: void foo(sycl::queue *& stream) {
-// CHECK-NEXT:   sycl::queue *s0;
-// CHECK-NEXT:   sycl::queue * &s1 = s0;
+// CHECK: void foo(dpct::queue_ptr& stream) {
+// CHECK-NEXT:   dpct::queue_ptr s0;
+// CHECK-NEXT:   dpct::queue_ptr &s1 = s0;
 // CHECK-NEXT: }
 void foo(cudaStream_t& stream) {
   cudaStream_t s0;

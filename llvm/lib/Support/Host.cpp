@@ -47,6 +47,9 @@
 #ifdef _AIX
 #include <sys/systemcfg.h>
 #endif
+#if defined(__sun__) && defined(__svr4__)
+#include <kstat.h>
+#endif
 
 #define DEBUG_TYPE "host-detection"
 
@@ -203,6 +206,8 @@ StringRef sys::detail::getHostCPUNameForARM(StringRef ProcCpuinfoContent) {
         .Case("0xd02", "cortex-a34")
         .Case("0xd04", "cortex-a35")
         .Case("0xd03", "cortex-a53")
+        .Case("0xd05", "cortex-a55")
+        .Case("0xd46", "cortex-a510")
         .Case("0xd07", "cortex-a57")
         .Case("0xd08", "cortex-a72")
         .Case("0xd09", "cortex-a73")
@@ -210,11 +215,16 @@ StringRef sys::detail::getHostCPUNameForARM(StringRef ProcCpuinfoContent) {
         .Case("0xd0b", "cortex-a76")
         .Case("0xd0d", "cortex-a77")
         .Case("0xd41", "cortex-a78")
+        .Case("0xd47", "cortex-a710")
+        .Case("0xd4d", "cortex-a715")
         .Case("0xd44", "cortex-x1")
         .Case("0xd4c", "cortex-x1c")
+        .Case("0xd48", "cortex-x2")
+        .Case("0xd4e", "cortex-x3")
         .Case("0xd0c", "neoverse-n1")
         .Case("0xd49", "neoverse-n2")
         .Case("0xd40", "neoverse-v1")
+        .Case("0xd4f", "neoverse-v2")
         .Default("generic");
   }
 
@@ -288,12 +298,18 @@ StringRef sys::detail::getHostCPUNameForARM(StringRef ProcCpuinfoContent) {
     switch (Exynos) {
     default:
       // Default by falling through to Exynos M3.
-      LLVM_FALLTHROUGH;
+      [[fallthrough]];
     case 0x1002:
       return "exynos-m3";
     case 0x1003:
       return "exynos-m4";
     }
+  }
+
+  if (Implementer == "0xc0") { // Ampere Computing
+    return StringSwitch<const char *>(Part)
+        .Case("0xac3", "ampere1")
+        .Default("generic");
   }
 
   return "generic";
@@ -330,7 +346,7 @@ StringRef getCPUNameFromS390Model(unsigned int Id, bool HaveVectorSupport) {
     case 3931:
     case 3932:
     default:
-      return HaveVectorSupport? "arch14" : "zEC12";
+      return HaveVectorSupport? "z16" : "zEC12";
   }
 }
 } // end anonymous namespace
@@ -378,6 +394,26 @@ StringRef sys::detail::getHostCPUNameForS390x(StringRef ProcCpuinfoContent) {
   }
 
   return "generic";
+}
+
+StringRef sys::detail::getHostCPUNameForRISCV(StringRef ProcCpuinfoContent) {
+  // There are 24 lines in /proc/cpuinfo
+  SmallVector<StringRef> Lines;
+  ProcCpuinfoContent.split(Lines, "\n");
+
+  // Look for uarch line to determine cpu name
+  StringRef UArch;
+  for (unsigned I = 0, E = Lines.size(); I != E; ++I) {
+    if (Lines[I].startswith("uarch")) {
+      UArch = Lines[I].substr(5).ltrim("\t :");
+      break;
+    }
+  }
+
+  return StringSwitch<const char *>(UArch)
+      .Case("sifive,u74-mc", "sifive-u74")
+      .Case("sifive,bullet0", "sifive-u74")
+      .Default("generic");
 }
 
 StringRef sys::detail::getHostCPUNameForBPF() {
@@ -785,9 +821,23 @@ getIntelProcessorTypeAndSubtype(unsigned Family, unsigned Model,
     // Alderlake:
     case 0x97:
     case 0x9a:
+    // Raptorlake:
+    case 0xb7:
+    // Meteorlake:
+    case 0xb5:
+    case 0xaa:
+    case 0xac:
       CPU = "alderlake";
       *Type = X86::INTEL_COREI7;
       *Subtype = X86::INTEL_COREI7_ALDERLAKE;
+      break;
+
+    // Graniterapids:
+    case 0xae:
+    case 0xad:
+      CPU = "graniterapids";
+      *Type = X86::INTEL_COREI7;
+      *Subtype = X86::INTEL_COREI7_GRANITERAPIDS;
       break;
 
     // Icelake Xeon:
@@ -837,6 +887,18 @@ getIntelProcessorTypeAndSubtype(unsigned Family, unsigned Model,
     case 0x86:
       CPU = "tremont";
       *Type = X86::INTEL_TREMONT;
+      break;
+
+    // Sierraforest:
+    case 0xaf:
+      CPU = "sierraforest";
+      *Type = X86::INTEL_SIERRAFOREST;
+      break;
+
+    // Grandridge:
+    case 0xb6:
+      CPU = "grandridge";
+      *Type = X86::INTEL_GRANDRIDGE;
       break;
 
     // Xeon Phi (Knights Landing + Knights Mill):
@@ -1034,9 +1096,14 @@ getAMDProcessorTypeAndSubtype(unsigned Family, unsigned Model,
   case 25:
     CPU = "znver3";
     *Type = X86::AMDFAM19H;
-    if (Model <= 0x0f || Model == 0x21) {
+    if (Model <= 0x0f || (Model >= 0x20 && Model <= 0x5f)) {
+      // Family 19h Models 00h-0Fh - Zen3
+      // Family 19h Models 20h-2Fh - Zen3
+      // Family 19h Models 30h-3Fh - Zen3
+      // Family 19h Models 40h-4Fh - Zen3+
+      // Family 19h Models 50h-5Fh - Zen3+
       *Subtype = X86::AMDFAM19H_ZNVER3;
-      break; // 00h-0Fh, 21h: Zen3
+      break;
     }
     break;
   default:
@@ -1214,7 +1281,7 @@ StringRef sys::getHostCPUName() {
   return "generic";
 }
 
-#elif defined(__APPLE__) && (defined(__ppc__) || defined(__powerpc__))
+#elif defined(__APPLE__) && defined(__powerpc__)
 StringRef sys::getHostCPUName() {
   host_basic_info_data_t hostInfo;
   mach_msg_type_number_t infoCount;
@@ -1258,7 +1325,7 @@ StringRef sys::getHostCPUName() {
 
   return "generic";
 }
-#elif defined(__linux__) && (defined(__ppc__) || defined(__powerpc__))
+#elif defined(__linux__) && defined(__powerpc__)
 StringRef sys::getHostCPUName() {
   std::unique_ptr<llvm::MemoryBuffer> P = getProcCpuinfoContent();
   StringRef Content = P ? P->getBuffer() : "";
@@ -1373,12 +1440,123 @@ StringRef sys::getHostCPUName() {
 }
 #elif defined(__riscv)
 StringRef sys::getHostCPUName() {
+#if defined(__linux__)
+  std::unique_ptr<llvm::MemoryBuffer> P = getProcCpuinfoContent();
+  StringRef Content = P ? P->getBuffer() : "";
+  return detail::getHostCPUNameForRISCV(Content);
+#else
 #if __riscv_xlen == 64
   return "generic-rv64";
 #elif __riscv_xlen == 32
   return "generic-rv32";
 #else
 #error "Unhandled value of __riscv_xlen"
+#endif
+#endif
+}
+#elif defined(__sparc__)
+#if defined(__linux__)
+StringRef sys::detail::getHostCPUNameForSPARC(StringRef ProcCpuinfoContent) {
+  SmallVector<StringRef> Lines;
+  ProcCpuinfoContent.split(Lines, "\n");
+
+  // Look for cpu line to determine cpu name
+  StringRef Cpu;
+  for (unsigned I = 0, E = Lines.size(); I != E; ++I) {
+    if (Lines[I].startswith("cpu")) {
+      Cpu = Lines[I].substr(5).ltrim("\t :");
+      break;
+    }
+  }
+
+  return StringSwitch<const char *>(Cpu)
+      .StartsWith("SuperSparc", "supersparc")
+      .StartsWith("HyperSparc", "hypersparc")
+      .StartsWith("SpitFire", "ultrasparc")
+      .StartsWith("BlackBird", "ultrasparc")
+      .StartsWith("Sabre", " ultrasparc")
+      .StartsWith("Hummingbird", "ultrasparc")
+      .StartsWith("Cheetah", "ultrasparc3")
+      .StartsWith("Jalapeno", "ultrasparc3")
+      .StartsWith("Jaguar", "ultrasparc3")
+      .StartsWith("Panther", "ultrasparc3")
+      .StartsWith("Serrano", "ultrasparc3")
+      .StartsWith("UltraSparc T1", "niagara")
+      .StartsWith("UltraSparc T2", "niagara2")
+      .StartsWith("UltraSparc T3", "niagara3")
+      .StartsWith("UltraSparc T4", "niagara4")
+      .StartsWith("UltraSparc T5", "niagara4")
+      .StartsWith("LEON", "leon3")
+      // niagara7/m8 not supported by LLVM yet.
+      .StartsWith("SPARC-M7", "niagara4" /* "niagara7" */)
+      .StartsWith("SPARC-S7", "niagara4" /* "niagara7" */)
+      .StartsWith("SPARC-M8", "niagara4" /* "m8" */)
+      .Default("generic");
+}
+#endif
+
+StringRef sys::getHostCPUName() {
+#if defined(__linux__)
+  std::unique_ptr<llvm::MemoryBuffer> P = getProcCpuinfoContent();
+  StringRef Content = P ? P->getBuffer() : "";
+  return detail::getHostCPUNameForSPARC(Content);
+#elif defined(__sun__) && defined(__svr4__)
+  char *buf = NULL;
+  kstat_ctl_t *kc;
+  kstat_t *ksp;
+  kstat_named_t *brand = NULL;
+
+  kc = kstat_open();
+  if (kc != NULL) {
+    ksp = kstat_lookup(kc, const_cast<char *>("cpu_info"), -1, NULL);
+    if (ksp != NULL && kstat_read(kc, ksp, NULL) != -1 &&
+        ksp->ks_type == KSTAT_TYPE_NAMED)
+      brand =
+          (kstat_named_t *)kstat_data_lookup(ksp, const_cast<char *>("brand"));
+    if (brand != NULL && brand->data_type == KSTAT_DATA_STRING)
+      buf = KSTAT_NAMED_STR_PTR(brand);
+  }
+  kstat_close(kc);
+
+  return StringSwitch<const char *>(buf)
+      .Case("TMS390S10", "supersparc") // Texas Instruments microSPARC I
+      .Case("TMS390Z50", "supersparc") // Texas Instruments SuperSPARC I
+      .Case("TMS390Z55",
+            "supersparc") // Texas Instruments SuperSPARC I with SuperCache
+      .Case("MB86904", "supersparc") // Fujitsu microSPARC II
+      .Case("MB86907", "supersparc") // Fujitsu TurboSPARC
+      .Case("RT623", "hypersparc")   // Ross hyperSPARC
+      .Case("RT625", "hypersparc")
+      .Case("RT626", "hypersparc")
+      .Case("UltraSPARC-I", "ultrasparc")
+      .Case("UltraSPARC-II", "ultrasparc")
+      .Case("UltraSPARC-IIe", "ultrasparc")
+      .Case("UltraSPARC-IIi", "ultrasparc")
+      .Case("SPARC64-III", "ultrasparc")
+      .Case("SPARC64-IV", "ultrasparc")
+      .Case("UltraSPARC-III", "ultrasparc3")
+      .Case("UltraSPARC-III+", "ultrasparc3")
+      .Case("UltraSPARC-IIIi", "ultrasparc3")
+      .Case("UltraSPARC-IIIi+", "ultrasparc3")
+      .Case("UltraSPARC-IV", "ultrasparc3")
+      .Case("UltraSPARC-IV+", "ultrasparc3")
+      .Case("SPARC64-V", "ultrasparc3")
+      .Case("SPARC64-VI", "ultrasparc3")
+      .Case("SPARC64-VII", "ultrasparc3")
+      .Case("UltraSPARC-T1", "niagara")
+      .Case("UltraSPARC-T2", "niagara2")
+      .Case("UltraSPARC-T2", "niagara2")
+      .Case("UltraSPARC-T2+", "niagara2")
+      .Case("SPARC-T3", "niagara3")
+      .Case("SPARC-T4", "niagara4")
+      .Case("SPARC-T5", "niagara4")
+      // niagara7/m8 not supported by LLVM yet.
+      .Case("SPARC-M7", "niagara4" /* "niagara7" */)
+      .Case("SPARC-S7", "niagara4" /* "niagara7" */)
+      .Case("SPARC-M8", "niagara4" /* "m8" */)
+      .Default("generic");
+#else
+  return "generic";
 #endif
 }
 #else
@@ -1397,126 +1575,6 @@ VendorSignatures getVendorSignature(unsigned *MaxLeaf) {
 } // namespace sys
 } // namespace llvm
 #endif
-
-#if defined(__linux__) && (defined(__i386__) || defined(__x86_64__))
-// On Linux, the number of physical cores can be computed from /proc/cpuinfo,
-// using the number of unique physical/core id pairs. The following
-// implementation reads the /proc/cpuinfo format on an x86_64 system.
-int computeHostNumPhysicalCores() {
-  // Enabled represents the number of physical id/core id pairs with at least
-  // one processor id enabled by the CPU affinity mask.
-  cpu_set_t Affinity, Enabled;
-  if (sched_getaffinity(0, sizeof(Affinity), &Affinity) != 0)
-    return -1;
-  CPU_ZERO(&Enabled);
-
-  // Read /proc/cpuinfo as a stream (until EOF reached). It cannot be
-  // mmapped because it appears to have 0 size.
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> Text =
-      llvm::MemoryBuffer::getFileAsStream("/proc/cpuinfo");
-  if (std::error_code EC = Text.getError()) {
-    llvm::errs() << "Can't read "
-                 << "/proc/cpuinfo: " << EC.message() << "\n";
-    return -1;
-  }
-  SmallVector<StringRef, 8> strs;
-  (*Text)->getBuffer().split(strs, "\n", /*MaxSplit=*/-1,
-                             /*KeepEmpty=*/false);
-  int CurProcessor = -1;
-  int CurPhysicalId = -1;
-  int CurSiblings = -1;
-  int CurCoreId = -1;
-  for (StringRef Line : strs) {
-    std::pair<StringRef, StringRef> Data = Line.split(':');
-    auto Name = Data.first.trim();
-    auto Val = Data.second.trim();
-    // These fields are available if the kernel is configured with CONFIG_SMP.
-    if (Name == "processor")
-      Val.getAsInteger(10, CurProcessor);
-    else if (Name == "physical id")
-      Val.getAsInteger(10, CurPhysicalId);
-    else if (Name == "siblings")
-      Val.getAsInteger(10, CurSiblings);
-    else if (Name == "core id") {
-      Val.getAsInteger(10, CurCoreId);
-      // The processor id corresponds to an index into cpu_set_t.
-      if (CPU_ISSET(CurProcessor, &Affinity))
-        CPU_SET(CurPhysicalId * CurSiblings + CurCoreId, &Enabled);
-    }
-  }
-  return CPU_COUNT(&Enabled);
-}
-#elif defined(__linux__) && defined(__powerpc__)
-int computeHostNumPhysicalCores() {
-  cpu_set_t Affinity;
-  if (sched_getaffinity(0, sizeof(Affinity), &Affinity) == 0)
-    return CPU_COUNT(&Affinity);
-
-  // The call to sched_getaffinity() may have failed because the Affinity
-  // mask is too small for the number of CPU's on the system (i.e. the
-  // system has more than 1024 CPUs). Allocate a mask large enough for
-  // twice as many CPUs.
-  cpu_set_t *DynAffinity;
-  DynAffinity = CPU_ALLOC(2048);
-  if (sched_getaffinity(0, CPU_ALLOC_SIZE(2048), DynAffinity) == 0) {
-    int NumCPUs = CPU_COUNT(DynAffinity);
-    CPU_FREE(DynAffinity);
-    return NumCPUs;
-  }
-  return -1;
-}
-#elif defined(__linux__) && defined(__s390x__)
-int computeHostNumPhysicalCores() { return sysconf(_SC_NPROCESSORS_ONLN); }
-#elif defined(__APPLE__)
-// Gets the number of *physical cores* on the machine.
-int computeHostNumPhysicalCores() {
-  uint32_t count;
-  size_t len = sizeof(count);
-  sysctlbyname("hw.physicalcpu", &count, &len, NULL, 0);
-  if (count < 1) {
-    int nm[2];
-    nm[0] = CTL_HW;
-    nm[1] = HW_AVAILCPU;
-    sysctl(nm, 2, &count, &len, NULL, 0);
-    if (count < 1)
-      return -1;
-  }
-  return count;
-}
-#elif defined(__MVS__)
-int computeHostNumPhysicalCores() {
-  enum {
-    // Byte offset of the pointer to the Communications Vector Table (CVT) in
-    // the Prefixed Save Area (PSA). The table entry is a 31-bit pointer and
-    // will be zero-extended to uintptr_t.
-    FLCCVT = 16,
-    // Byte offset of the pointer to the Common System Data Area (CSD) in the
-    // CVT. The table entry is a 31-bit pointer and will be zero-extended to
-    // uintptr_t.
-    CVTCSD = 660,
-    // Byte offset to the number of live CPs in the LPAR, stored as a signed
-    // 32-bit value in the table.
-    CSD_NUMBER_ONLINE_STANDARD_CPS = 264,
-  };
-  char *PSA = 0;
-  char *CVT = reinterpret_cast<char *>(
-      static_cast<uintptr_t>(reinterpret_cast<unsigned int &>(PSA[FLCCVT])));
-  char *CSD = reinterpret_cast<char *>(
-      static_cast<uintptr_t>(reinterpret_cast<unsigned int &>(CVT[CVTCSD])));
-  return reinterpret_cast<int &>(CSD[CSD_NUMBER_ONLINE_STANDARD_CPS]);
-}
-#elif defined(_WIN32) && LLVM_ENABLE_THREADS != 0
-// Defined in llvm/lib/Support/Windows/Threading.inc
-int computeHostNumPhysicalCores();
-#else
-// On other systems, return -1 to indicate unknown.
-static int computeHostNumPhysicalCores() { return -1; }
-#endif
-
-int sys::getHostNumPhysicalCores() {
-  static int NumCores = computeHostNumPhysicalCores();
-  return NumCores;
-}
 
 #if defined(__i386__) || defined(_M_IX86) || \
     defined(__x86_64__) || defined(_M_X64)
@@ -1594,6 +1652,7 @@ bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
   bool HasExtLeaf8 = MaxExtLevel >= 0x80000008 &&
                      !getX86CpuIDAndInfo(0x80000008, &EAX, &EBX, &ECX, &EDX);
   Features["clzero"]   = HasExtLeaf8 && ((EBX >> 0) & 1);
+  Features["rdpru"]    = HasExtLeaf8 && ((EBX >> 4) & 1);
   Features["wbnoinvd"] = HasExtLeaf8 && ((EBX >> 9) & 1);
 
   bool HasLeaf7 =
@@ -1663,9 +1722,16 @@ bool sys::getHostCPUFeatures(StringMap<bool> &Features) {
   Features["amx-int8"]   = HasLeaf7 && ((EDX >> 25) & 1) && HasAMXSave;
   bool HasLeaf7Subleaf1 =
       MaxLevel >= 7 && !getX86CpuIDAndInfoEx(0x7, 0x1, &EAX, &EBX, &ECX, &EDX);
+  Features["raoint"]     = HasLeaf7Subleaf1 && ((EAX >> 3) & 1);
   Features["avxvnni"]    = HasLeaf7Subleaf1 && ((EAX >> 4) & 1) && HasAVXSave;
   Features["avx512bf16"] = HasLeaf7Subleaf1 && ((EAX >> 5) & 1) && HasAVX512Save;
+  Features["amx-fp16"]   = HasLeaf7Subleaf1 && ((EAX >> 21) & 1) && HasAMXSave;
+  Features["cmpccxadd"]  = HasLeaf7Subleaf1 && ((EAX >> 7) & 1);
   Features["hreset"]     = HasLeaf7Subleaf1 && ((EAX >> 22) & 1);
+  Features["avxifma"]    = HasLeaf7Subleaf1 && ((EAX >> 23) & 1) && HasAVXSave;
+  Features["avxvnniint8"] = HasLeaf7Subleaf1 && ((EDX >> 4) & 1) && HasAVXSave;
+  Features["avxneconvert"] = HasLeaf7Subleaf1 && ((EDX >> 5) & 1) && HasAVXSave;
+  Features["prefetchi"]  = HasLeaf7Subleaf1 && ((EDX >> 14) & 1);
 
   bool HasLeafD = MaxLevel >= 0xd &&
                   !getX86CpuIDAndInfoEx(0xd, 0x1, &EAX, &EBX, &ECX, &EDX);

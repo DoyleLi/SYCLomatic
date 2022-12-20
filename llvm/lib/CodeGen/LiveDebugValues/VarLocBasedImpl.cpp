@@ -148,6 +148,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <optional>
 #include <queue>
 #include <tuple>
 #include <utility>
@@ -237,8 +238,7 @@ struct LocIndex {
   }
 
   template<typename IntT> static LocIndex fromRawInteger(IntT ID) {
-    static_assert(std::is_unsigned<IntT>::value &&
-                      sizeof(ID) == sizeof(uint64_t),
+    static_assert(std::is_unsigned_v<IntT> && sizeof(ID) == sizeof(uint64_t),
                   "Cannot convert raw integer to LocIndex");
     return {static_cast<u32_location_t>(ID >> 32),
             static_cast<u32_index_t>(ID)};
@@ -282,7 +282,7 @@ private:
   enum struct TransferKind { TransferCopy, TransferSpill, TransferRestore };
 
   using FragmentInfo = DIExpression::FragmentInfo;
-  using OptFragmentInfo = Optional<DIExpression::FragmentInfo>;
+  using OptFragmentInfo = std::optional<DIExpression::FragmentInfo>;
 
   /// A pair of debug variable and value location.
   struct VarLoc {
@@ -1116,7 +1116,7 @@ VarLocBasedLDV::OpenRangesSet::getEntryValueBackup(DebugVariable Var) {
   if (It != EntryValuesBackupVars.end())
     return It->second;
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 void VarLocBasedLDV::collectIDsForRegs(VarLocsInRange &Collected,
@@ -1622,7 +1622,7 @@ Optional<VarLocBasedLDV::VarLoc::SpillLoc>
 VarLocBasedLDV::isRestoreInstruction(const MachineInstr &MI,
                                       MachineFunction *MF, Register &Reg) {
   if (!MI.hasOneMemOperand())
-    return None;
+    return std::nullopt;
 
   // FIXME: Handle folded restore instructions with more than one memory
   // operand.
@@ -1630,7 +1630,7 @@ VarLocBasedLDV::isRestoreInstruction(const MachineInstr &MI,
     Reg = MI.getOperand(0).getReg();
     return extractSpillBaseRegAndOffset(MI);
   }
-  return None;
+  return std::nullopt;
 }
 
 /// A spilled register may indicate that we have to end the current range of
@@ -1874,7 +1874,7 @@ void VarLocBasedLDV::accumulateFragmentMap(MachineInstr &MI,
   // Otherwise, examine all other seen fragments for this variable, with "this"
   // fragment being a previously unseen fragment. Record any pair of
   // overlapping fragments.
-  for (auto &ASeenFragment : AllSeenFragments) {
+  for (const auto &ASeenFragment : AllSeenFragments) {
     // Does this previously seen fragment overlap?
     if (DIExpression::fragmentsOverlap(ThisFragment, ASeenFragment)) {
       // Yes: Mark the current fragment as being overlapped.
@@ -1922,7 +1922,7 @@ bool VarLocBasedLDV::join(
   // For all predecessors of this MBB, find the set of VarLocs that
   // can be joined.
   int NumVisited = 0;
-  for (auto p : MBB.predecessors()) {
+  for (auto *p : MBB.predecessors()) {
     // Ignore backedges if we have not visited the predecessor yet. As the
     // predecessor hasn't yet had locations propagated into it, most locations
     // will not yet be valid, so treat them as all being uninitialized and
@@ -2246,7 +2246,7 @@ bool VarLocBasedLDV::ExtendRanges(MachineFunction &MF,
 
         if (OLChanged) {
           OLChanged = false;
-          for (auto s : MBB->successors())
+          for (auto *s : MBB->successors())
             if (OnPending.insert(s).second) {
               Pending.push(BBToOrder[s]);
             }

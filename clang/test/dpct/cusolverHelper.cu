@@ -1,7 +1,7 @@
 // RUN: dpct --format-range=none --report-type=all -out-root %T/cusolverHelper %s --cuda-include-path="%cuda-path/include" -- -std=c++14 -x cuda --cuda-host-only
 // RUN: FileCheck --input-file %T/cusolverHelper/cusolverHelper.dp.cpp --match-full-lines %s
 
-// CHECK: #include <CL/sycl.hpp>
+// CHECK: #include <sycl/sycl.hpp>
 // CHECK-NEXT: #include <dpct/dpct.hpp>
 #include <cusolverDn.h>
 
@@ -61,6 +61,12 @@ int main(int argc, char *argv[])
     // CHECK-NEXT: int b = sizeof(sycl::queue*);
     int a = sizeof(cublasStatus_t);
     int b = sizeof(cusolverDnHandle_t);
+
+    cudaStream_t stream;
+    // CHECK: status = (stream = cusolverH, 0);
+    // CHECK: status = (cusolverH = stream, 0);
+    status = cusolverDnGetStream(cusolverH, &stream);
+    status = cusolverDnSetStream(cusolverH, stream);
 }
 
 

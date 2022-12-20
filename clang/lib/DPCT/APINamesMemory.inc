@@ -130,16 +130,40 @@ ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
 
 ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
     CheckCanUseTemplateMalloc(0, 1),
-    ASSIGN_FACTORY_ENTRY("cudaMallocManaged", DEREF(makeDerefArgCreatorWithCall(0)),
-                         CALL(TEMPLATED_CALLEE_WITH_ARGS(
-                                  MapNames::getClNamespace() + "malloc_shared",
-                                  getDoubleDerefedType(0)),
-                              getSizeForMalloc(0, 1), QUEUESTR)),
-    ASSIGN_FACTORY_ENTRY("cudaMallocManaged", DEREF(makeDerefArgCreatorWithCall(0)),
-                         CAST(getDerefedType(0),
-                              CALL(MapNames::getClNamespace() + "malloc_shared",
-                                   getSizeForMalloc(0, 1), QUEUESTR)
-                             ))))
+    CONDITIONAL_FACTORY_ENTRY(
+        hasManagedAttr(0),
+        ASSIGN_FACTORY_ENTRY(
+            "cudaMallocManaged",
+            makeCombinedArg(
+                makeCombinedArg(ARG("*("),
+                                DEREF(makeDerefArgCreatorWithCall(0))),
+                ARG(".get_ptr())")),
+            CALL(TEMPLATED_CALLEE_WITH_ARGS(MapNames::getClNamespace() +
+                                                "malloc_shared",
+                                            getDoubleDerefedType(0)),
+                 getSizeForMalloc(0, 1), QUEUESTR)),
+        ASSIGN_FACTORY_ENTRY(
+            "cudaMallocManaged", DEREF(makeDerefArgCreatorWithCall(0)),
+            CALL(TEMPLATED_CALLEE_WITH_ARGS(MapNames::getClNamespace() +
+                                                "malloc_shared",
+                                            getDoubleDerefedType(0)),
+                 getSizeForMalloc(0, 1), QUEUESTR))),
+    CONDITIONAL_FACTORY_ENTRY(
+        hasManagedAttr(0),
+        ASSIGN_FACTORY_ENTRY(
+            "cudaMallocManaged",
+            makeCombinedArg(
+                makeCombinedArg(ARG("*("),
+                                DEREF(makeDerefArgCreatorWithCall(0))),
+                ARG(".get_ptr())")),
+            CAST(getDerefedType(0),
+                 CALL(MapNames::getClNamespace() + "malloc_shared",
+                      getSizeForMalloc(0, 1), QUEUESTR))),
+        ASSIGN_FACTORY_ENTRY(
+            "cudaMallocManaged", DEREF(makeDerefArgCreatorWithCall(0)),
+            CAST(getDerefedType(0),
+                 CALL(MapNames::getClNamespace() + "malloc_shared",
+                      getSizeForMalloc(0, 1), QUEUESTR))))))
 
 ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
     CheckCanUseTemplateMalloc(0, 1),
@@ -166,13 +190,13 @@ ASSIGNABLE_FACTORY(
 ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
     checkIsUSM(),
     CONDITIONAL_FACTORY_ENTRY(
-        checkIsArgStream(3),
+        makeCheckNot(CheckArgIsDefaultCudaStream(3)),
         MEMBER_CALL_FACTORY_ENTRY(
             "cuMemcpyDtoDAsync_v2", ARG(3), true, "memcpy", ARG(0), ARG(1), ARG(2)),
         MEMBER_CALL_FACTORY_ENTRY(
             "cuMemcpyDtoDAsync_v2", QUEUESTR, false, "memcpy", ARG(0), ARG(1), ARG(2))),
     CONDITIONAL_FACTORY_ENTRY(
-        checkIsArgStream(3),
+        makeCheckNot(CheckArgIsDefaultCudaStream(3)),
         CALL_FACTORY_ENTRY(
             "cuMemcpyDtoDAsync_v2", CALL(MapNames::getDpctNamespace() + "async_dpct_memcpy",
             ARG(0), ARG(1), ARG(2), ARG(MapNames::getDpctNamespace() + "automatic"), STREAM(3))),
@@ -194,7 +218,7 @@ ASSIGNABLE_FACTORY(
         CAST(getDerefedType(0), CALL(MapNames::getDpctNamespace() + "dpct_malloc", DEREF(makeCallArgCreatorWithCall(1)), ARG(2), ARG(3)))))
 
 ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
-    checkIsArgStream(3),
+    makeCheckNot(CheckArgIsDefaultCudaStream(3)),
     MEMBER_CALL_FACTORY_ENTRY(
         "cuMemPrefetchAsync", ARG(3), true, "prefetch", ARG(0), ARG(1)),
     FEATURE_REQUEST_FACTORY(HelperFeatureEnum::Device_dev_mgr_get_device,
@@ -264,13 +288,13 @@ ASSIGNABLE_FACTORY(
 ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
     checkIsUSM(),
     CONDITIONAL_FACTORY_ENTRY(
-        checkIsArgStream(3),
+        makeCheckNot(CheckArgIsDefaultCudaStream(3)),
         MEMBER_CALL_FACTORY_ENTRY(
             "cuMemcpyHtoDAsync_v2", ARG(3), true, "memcpy", ARG(0), ARG(1), ARG(2)),
         MEMBER_CALL_FACTORY_ENTRY(
             "cuMemcpyHtoDAsync_v2", QUEUESTR, false, "memcpy", ARG(0), ARG(1), ARG(2))),
     CONDITIONAL_FACTORY_ENTRY(
-        checkIsArgStream(3),
+        makeCheckNot(CheckArgIsDefaultCudaStream(3)),
         CALL_FACTORY_ENTRY(
             "cuMemcpyHtoDAsync_v2", CALL(MapNames::getDpctNamespace() + "async_dpct_memcpy",
             ARG(0), ARG(1), ARG(2), ARG(MapNames::getDpctNamespace() + "automatic"), STREAM(3))),
@@ -286,6 +310,30 @@ ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
         "cuMemcpyHtoD_v2", CALL(MapNames::getDpctNamespace() + "dpct_memcpy",
         ARG(0), ARG(1), ARG(2), ARG(MapNames::getDpctNamespace() + "automatic")))))
 
+ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
+    checkIsUSM(),
+    MEMBER_CALL_FACTORY_ENTRY(
+        "cuMemcpy", MEMBER_CALL(QUEUESTR, false, "memcpy", ARG(0), ARG(1), ARG(2)), false, "wait"),
+    CALL_FACTORY_ENTRY(
+        "cuMemcpy", CALL(MapNames::getDpctNamespace() + "dpct_memcpy",
+	ARG(0), ARG(1), ARG(2), ARG(MapNames::getDpctNamespace() + "automatic")))))
+
+ASSIGNABLE_FACTORY(CONDITIONAL_FACTORY_ENTRY(
+    checkIsUSM(),
+    CONDITIONAL_FACTORY_ENTRY(
+        makeCheckNot(CheckArgIsDefaultCudaStream(3)),
+        MEMBER_CALL_FACTORY_ENTRY(
+            "cuMemcpyAsync", ARG(3), true, "memcpy", ARG(0), ARG(1), ARG(2)),
+        MEMBER_CALL_FACTORY_ENTRY(
+            "cuMemcpyAsync", QUEUESTR, false, "memcpy", ARG(0), ARG(1), ARG(2))),
+    CONDITIONAL_FACTORY_ENTRY(
+        makeCheckNot(CheckArgIsDefaultCudaStream(3)),
+        CALL_FACTORY_ENTRY(
+            "cuMemcpyAsync", CALL(MapNames::getDpctNamespace() + "async_dpct_memcpy",
+            ARG(0), ARG(1), ARG(2), ARG(MapNames::getDpctNamespace() + "automatic"), STREAM(3))),
+        CALL_FACTORY_ENTRY(
+            "cuMemcpyAsync", CALL(MapNames::getDpctNamespace() + "async_dpct_memcpy",
+            ARG(0), ARG(1), ARG(2), ARG(MapNames::getDpctNamespace() + "automatic"))))))
 
 CONDITIONAL_FACTORY_ENTRY(
     checkIsCallExprOnly(),
@@ -308,3 +356,9 @@ CONDITIONAL_FACTORY_ENTRY(
         TOSTRING_FACTORY_ENTRY("cudaHostRegister", LITERAL("0")),
         Diagnostics::FUNC_CALL_REMOVED_0,
         std::string("cudaHostRegister"), getRemovedAPIWarningMessage("cudaHostRegister")))
+
+ASSIGNABLE_FACTORY(
+    FEATURE_REQUEST_FACTORY(
+        HelperFeatureEnum::Memory_pointer_attributes,
+        MEMBER_CALL_FACTORY_ENTRY(
+            "cudaPointerGetAttributes", DEREF(0), false, "init", ARG(1))))

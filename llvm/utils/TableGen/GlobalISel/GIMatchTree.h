@@ -29,14 +29,14 @@ class GIMatchTreeVariableBinding {
 
 public:
   GIMatchTreeVariableBinding(StringRef Name, unsigned InstrID,
-                             Optional<unsigned> OpIdx = None)
+                             Optional<unsigned> OpIdx = std::nullopt)
       : Name(Name), InstrID(InstrID), OpIdx(OpIdx) {}
 
-  bool isInstr() const { return !OpIdx.hasValue(); }
+  bool isInstr() const { return !OpIdx; }
   StringRef getName() const { return Name; }
   unsigned getInstrID() const { return InstrID; }
   unsigned getOpIdx() const {
-    assert(OpIdx.hasValue() && "Is not an operand binding");
+    assert(OpIdx && "Is not an operand binding");
     return *OpIdx;
   }
 };

@@ -4,7 +4,7 @@
 // RUN: FileCheck --input-file %T/thrust-complex/thrust-complex.dp.cpp --match-full-lines %s
 // CHECK: #include <oneapi/dpl/execution>
 // CHECK-NEXT: #include <oneapi/dpl/algorithm>
-// CHECK-NEXT: #include <CL/sycl.hpp>
+// CHECK-NEXT: #include <sycl/sycl.hpp>
 // CHECK-NEXT: #include <dpct/dpct.hpp>
 // CHECK-NEXT: #include <dpct/dpl_utils.hpp>
 // CHECK-NEXT: #include <complex>
@@ -75,16 +75,16 @@ int main() {
 //  CC<thrust::complex, double> c4;
 
 // Check that no warnings are issued when using complex operators
-// CHECK:   cf = cf + 1.0;
-  cf = cf + 1.0;
-// CHECK:   cf = cf - 1.0;
-  cf = cf - 1.0;
-// CHECK:   cf = cf * 1.0;
-  cf = cf * 1.0;
-// CHECK:   cf = cf / 1.0;
-  cf = cf / 1.0;
-// CHECK:   bool b1 = (cf == 1.0);
-  bool b1 = (cf == 1.0);
+// CHECK:   cf = cf + 1.0f;
+  cf = cf + 1.0f;
+// CHECK:   cf = cf - 1.0f;
+  cf = cf - 1.0f;
+// CHECK:   cf = cf * 1.0f;
+  cf = cf * 1.0f;
+// CHECK:   cf = cf / 1.0f;
+  cf = cf / 1.0f;
+// CHECK:   bool b1 = (cf == 1.0f);
+  bool b1 = (cf == 1.0f);
 // CHECK:  std::complex<float> cf2;
 // CHECK-NEXT:   bool b2 = (cf != cf2);
   thrust::complex<float> cf2;
@@ -100,7 +100,7 @@ int main() {
   bar(reinterpret_cast<thrust::complex<double> *>(cdp));
 // CHECK:   q_ct1.submit(
 // CHECK-NEXT:     [&](sycl::handler &cgh) {
-// CHECK-NEXT:       sycl::accessor<std::complex<sycl::double2>, 1, sycl::access_mode::read_write, sycl::access::target::local> s_acc_ct1(sycl::range<1>(10), cgh);
+// CHECK-NEXT:       sycl::local_accessor<std::complex<sycl::double2>, 1> s_acc_ct1(sycl::range<1>(10), cgh);
 // CHECK-EMPTY:
 // CHECK-NEXT:       auto static_cast_thrust_complex_double_cdp_ct1 = static_cast<std::complex<double>>(*cdp);
 // CHECK-NEXT:       auto thrust_raw_pointer_cast_dc_ptr_ct2 = dpct::get_raw_pointer(dc_ptr);
@@ -116,7 +116,7 @@ int main() {
   int *d_i;
 // CHECK:   q_ct1.submit(
 // CHECK-NEXT:     [&](sycl::handler &cgh) {
-// CHECK-NEXT:       sycl::accessor<std::complex<int>, 1, sycl::access_mode::read_write, sycl::access::target::local> s_acc_ct1(sycl::range<1>(10), cgh);
+// CHECK-NEXT:       sycl::local_accessor<std::complex<int>, 1> s_acc_ct1(sycl::range<1>(10), cgh);
 // CHECK-EMPTY:
 // CHECK-NEXT:       cgh.parallel_for(
 // CHECK-NEXT:         sycl::nd_range<3>(sycl::range<3>(1, 1, 256), sycl::range<3>(1, 1, 256)),

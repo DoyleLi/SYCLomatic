@@ -1,19 +1,19 @@
-// RUN: dpct --format-range=none --usm-level=none -out-root %T/return-types %s --cuda-include-path="%cuda-path/include" -- -std=c++14 -x cuda --cuda-host-only
+// RUN: dpct --format-range=none --usm-level=none -out-root %T/return-types %s --cuda-include-path="%cuda-path/include" -- -std=c++14 -x cuda --cuda-host-only -fno-delayed-template-parsing
 // RUN: FileCheck --input-file %T/return-types/return-types.dp.cpp --match-full-lines %s
 
-// CHECK: #include <CL/sycl.hpp>
+// CHECK: #include <sycl/sycl.hpp>
 // CHECK-NEXT: #include <dpct/dpct.hpp>
 // CHECK-NEXT: #include <stdio.h>
 // CHECK-EMPTY:
 #include <stdio.h>
 
-// CHECK: #define DEF_BAR sycl::queue * bar() { \
-// CHECK-NEXT:   return 0; \
+// CHECK: #define DEF_BAR dpct::queue_ptr bar() { \
+// CHECK-NEXT:   return &dpct::get_default_queue(); \
 // CHECK-NEXT: }
 #define DEF_BAR cudaStream_t bar() { \
   return 0; \
 }
-// CHECK: #define DEF_BAR2 sycl::event bar2() { \
+// CHECK: #define DEF_BAR2 dpct::event_ptr bar2() { \
 // CHECK-NEXT:   return 0; \
 // CHECK-NEXT: }
 #define DEF_BAR2 cudaEvent_t bar2() { \
@@ -23,9 +23,11 @@
 DEF_BAR
 DEF_BAR2
 
+// need -fno-delayed-template-parsing on windows for
+// this migration to pass
 // CHECK: template <typename T>
-// CHECK-NEXT: sycl::queue * bar() {
-// CHECK-NEXT:   return 0;
+// CHECK-NEXT: dpct::queue_ptr bar() {
+// CHECK-NEXT:   return &dpct::get_default_queue();
 // CHECK-NEXT: }
 template <typename T>
 cudaStream_t bar() {
@@ -33,7 +35,7 @@ cudaStream_t bar() {
 }
 
 // CHECK: template <typename T>
-// CHECK-NEXT: sycl::event bar2() {
+// CHECK-NEXT: dpct::event_ptr bar2() {
 // CHECK-NEXT:   return 0;
 // CHECK-NEXT: }
 template <typename T>
@@ -41,89 +43,92 @@ cudaEvent_t bar2() {
   return 0;
 }
 
-// CHECK: sycl::queue * foo() {
+// CHECK: dpct::queue_ptr foo() {
 cudaStream_t foo() {
+  // CHECK: return &dpct::get_default_queue();
   return 0;
 }
 
-// CHECK: sycl::event foo2() {
+// CHECK: dpct::event_ptr foo2() {
 cudaEvent_t foo2() {
   return 0;
 }
 
 class S {
-  // CHECK: sycl::queue * foo() {
+  // CHECK: dpct::queue_ptr foo() {
   cudaStream_t foo() {
+    // CHECK: return &dpct::get_default_queue();
     return 0;
   }
 
-  // CHECK: sycl::event foo2() {
+  // CHECK: dpct::event_ptr foo2() {
   cudaEvent_t foo2() {
     return 0;
   }
 };
 
 class C {
-  // CHECK: sycl::queue * foo() {
+  // CHECK: dpct::queue_ptr foo() {
   cudaStream_t foo() {
+    // CHECK: return &dpct::get_default_queue();
     return 0;
   }
 
-  // CHECK: sycl::event foo2() {
+  // CHECK: dpct::event_ptr foo2() {
   cudaEvent_t foo2() {
     return 0;
   }
 };
 
-// CHECK: sycl::queue * *foo(int i) {
+// CHECK: dpct::queue_ptr *foo(int i) {
 cudaStream_t *foo(int i) {
   return 0;
 }
 
-// CHECK: const sycl::queue * *foo(unsigned i) {
+// CHECK: const dpct::queue_ptr *foo(unsigned i) {
 const cudaStream_t *foo(unsigned i) {
   return 0;
 }
 
-// CHECK: sycl::queue * **foo(char i) {
+// CHECK: dpct::queue_ptr **foo(char i) {
 cudaStream_t **foo(char i) {
   return 0;
 }
 
-// CHECK: sycl::queue * &foo(short i) {
+// CHECK: dpct::queue_ptr &foo(short i) {
 cudaStream_t &foo(short i) {
   cudaStream_t s;
   return s;
 }
 
-// CHECK: const sycl::queue * &foo(long i) {
+// CHECK: const dpct::queue_ptr &foo(long i) {
 const cudaStream_t &foo(long i) {
   cudaStream_t s;
   return s;
 }
 
-// CHECK: sycl::event *bar(int i) {
+// CHECK: dpct::event_ptr *bar(int i) {
 cudaEvent_t *bar(int i) {
   return 0;
 }
 
-// CHECK: const sycl::event *bar(unsigned i) {
+// CHECK: const dpct::event_ptr *bar(unsigned i) {
 const cudaEvent_t *bar(unsigned i) {
   return 0;
 }
 
-// CHECK: sycl::event **bar(char i) {
+// CHECK: dpct::event_ptr **bar(char i) {
 cudaEvent_t **bar(char i) {
   return 0;
 }
 
-// CHECK: sycl::event &bar(short i) {
+// CHECK: dpct::event_ptr &bar(short i) {
 cudaEvent_t &bar(short i) {
   cudaEvent_t e;
   return e;
 }
 
-// CHECK: const sycl::event &bar(long i) {
+// CHECK: const dpct::event_ptr &bar(long i) {
 const cudaEvent_t &bar(long i) {
   cudaEvent_t e;
   return e;

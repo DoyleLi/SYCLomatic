@@ -63,8 +63,8 @@ int main() {
   cudaStreamCreate(&stream);
   // CHECK: stream->submit(
   // CHECK-NEXT:  [&](sycl::handler &cgh) {
-  // CHECK-NEXT:    sycl::accessor<uint8_t, 1, sycl::access_mode::read_write, sycl::access::target::local> dpct_local_acc_ct1(sycl::range<1>(32), cgh);
-  // CHECK-NEXT:    sycl::accessor<int, 1, sycl::access_mode::read_write, sycl::access::target::local> s_acc_ct1(sycl::range<1>(16), cgh);
+  // CHECK-NEXT:    sycl::local_accessor<uint8_t, 1> dpct_local_acc_ct1(sycl::range<1>(32), cgh);
+  // CHECK-NEXT:    sycl::local_accessor<int, 1> s_acc_ct1(sycl::range<1>(16), cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:    auto d_ct0 = *(int **)args[0];
   // CHECK-EMPTY:
@@ -80,7 +80,7 @@ int main() {
   // CHECK: /*
   // CHECK-NEXT: DPCT1007:{{[0-9]+}}: Migration of cudaLaunchKernel is not supported.
   // CHECK-NEXT: */
-  // CHECK-NEXT: cudaLaunchKernel(kernel_func, sycl::range<3>(1, 1, 16), sycl::range<3>(1, 1, 16), args, 0, 0);
+  // CHECK-NEXT: cudaLaunchKernel(kernel_func, sycl::range<3>(1, 1, 16), sycl::range<3>(1, 1, 16), args, 0, &q_ct1);
   cudaLaunchKernel(kernel_func, dim3(16), dim3(16), args, 0, 0);
 
   cudaStreamDestroy(stream);

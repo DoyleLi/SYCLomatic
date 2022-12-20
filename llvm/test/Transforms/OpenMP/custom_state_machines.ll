@@ -156,7 +156,10 @@ worker.exit:                                      ; preds = %entry
   ret void
 }
 
-declare i32 @__kmpc_target_init(%struct.ident_t*, i8, i1, i1)
+; Make it a weak definition so we will apply custom state machine rewriting but can't use the body in the reasoning.
+define weak i32 @__kmpc_target_init(%struct.ident_t*, i8, i1, i1) {
+  ret i32 0
+}
 
 define internal void @__omp_outlined__(i32* noalias %.global_tid., i32* noalias %.bound_tid.) #0 {
 entry:
@@ -1637,7 +1640,8 @@ attributes #9 = { convergent nounwind readonly willreturn }
 ; AMDGPU:       if.then:
 ; AMDGPU-NEXT:    br label [[RETURN:%.*]]
 ; AMDGPU:       if.end:
-; AMDGPU-NEXT:    [[SUB:%.*]] = sub nsw i32 [[A]], 1
+; AMDGPU-NEXT:    [[TMP1:%.*]] = load i32, i32* [[A_ADDR]], align 4
+; AMDGPU-NEXT:    [[SUB:%.*]] = sub nsw i32 [[TMP1]], 1
 ; AMDGPU-NEXT:    call void @simple_state_machine_interprocedural_nested_recursive_after.internalized(i32 [[SUB]]) #[[ATTR8]]
 ; AMDGPU-NEXT:    call void @simple_state_machine_interprocedural_nested_recursive_after_after.internalized() #[[ATTR8]]
 ; AMDGPU-NEXT:    br label [[RETURN]]
@@ -2613,7 +2617,8 @@ attributes #9 = { convergent nounwind readonly willreturn }
 ; NVPTX:       if.then:
 ; NVPTX-NEXT:    br label [[RETURN:%.*]]
 ; NVPTX:       if.end:
-; NVPTX-NEXT:    [[SUB:%.*]] = sub nsw i32 [[A]], 1
+; NVPTX-NEXT:    [[TMP1:%.*]] = load i32, i32* [[A_ADDR]], align 4
+; NVPTX-NEXT:    [[SUB:%.*]] = sub nsw i32 [[TMP1]], 1
 ; NVPTX-NEXT:    call void @simple_state_machine_interprocedural_nested_recursive_after.internalized(i32 [[SUB]]) #[[ATTR8]]
 ; NVPTX-NEXT:    call void @simple_state_machine_interprocedural_nested_recursive_after_after.internalized() #[[ATTR8]]
 ; NVPTX-NEXT:    br label [[RETURN]]
@@ -3344,7 +3349,8 @@ attributes #9 = { convergent nounwind readonly willreturn }
 ; AMDGPU-DISABLED:       if.then:
 ; AMDGPU-DISABLED-NEXT:    br label [[RETURN:%.*]]
 ; AMDGPU-DISABLED:       if.end:
-; AMDGPU-DISABLED-NEXT:    [[SUB:%.*]] = sub nsw i32 [[A]], 1
+; AMDGPU-DISABLED-NEXT:    [[TMP1:%.*]] = load i32, i32* [[A_ADDR]], align 4
+; AMDGPU-DISABLED-NEXT:    [[SUB:%.*]] = sub nsw i32 [[TMP1]], 1
 ; AMDGPU-DISABLED-NEXT:    call void @simple_state_machine_interprocedural_nested_recursive_after.internalized(i32 [[SUB]]) #[[ATTR8]]
 ; AMDGPU-DISABLED-NEXT:    call void @simple_state_machine_interprocedural_nested_recursive_after_after.internalized() #[[ATTR8]]
 ; AMDGPU-DISABLED-NEXT:    br label [[RETURN]]
@@ -4045,7 +4051,8 @@ attributes #9 = { convergent nounwind readonly willreturn }
 ; NVPTX-DISABLED:       if.then:
 ; NVPTX-DISABLED-NEXT:    br label [[RETURN:%.*]]
 ; NVPTX-DISABLED:       if.end:
-; NVPTX-DISABLED-NEXT:    [[SUB:%.*]] = sub nsw i32 [[A]], 1
+; NVPTX-DISABLED-NEXT:    [[TMP1:%.*]] = load i32, i32* [[A_ADDR]], align 4
+; NVPTX-DISABLED-NEXT:    [[SUB:%.*]] = sub nsw i32 [[TMP1]], 1
 ; NVPTX-DISABLED-NEXT:    call void @simple_state_machine_interprocedural_nested_recursive_after.internalized(i32 [[SUB]]) #[[ATTR8]]
 ; NVPTX-DISABLED-NEXT:    call void @simple_state_machine_interprocedural_nested_recursive_after_after.internalized() #[[ATTR8]]
 ; NVPTX-DISABLED-NEXT:    br label [[RETURN]]

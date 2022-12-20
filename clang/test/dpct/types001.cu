@@ -9,6 +9,7 @@
 #include <cufft.h>
 #include <stdio.h>
 #include <vector>
+#include <algorithm>
 
 // CHECK: dpct::device_info deviceProp;
 cudaDeviceProp deviceProp;
@@ -19,11 +20,11 @@ const cudaDeviceProp deviceProp1 = {};
 // CHECK: volatile dpct::device_info deviceProp2;
 volatile cudaDeviceProp deviceProp2;
 
-// CHDCK: sycl::event events[23];
+// CHDCK: dpct::event_ptr events[23];
 cudaEvent_t events[23];
-// CHECK: const sycl::event *pevents[23];
+// CHECK: const dpct::event_ptr *pevents[23];
 const cudaEvent_t *pevents[23];
-// CHECK: const sycl::event **ppevents[23];
+// CHECK: const dpct::event_ptr **ppevents[23];
 const cudaEvent_t **ppevents[23];
 
 // CHECK: int errors[23];
@@ -48,11 +49,11 @@ const dim3 *pdims[23];
 const dim3 **ppdims[23];
 
 struct s {
-  // CHECK: sycl::event events[23];
+  // CHECK: dpct::event_ptr events[23];
   cudaEvent_t events[23];
-  // CHECK: const sycl::event *pevents[23];
+  // CHECK: const dpct::event_ptr *pevents[23];
   const cudaEvent_t *pevents[23];
-  // CHECK: const sycl::event **ppevents[23];
+  // CHECK: const dpct::event_ptr **ppevents[23];
   const cudaEvent_t **ppevents[23];
 
   // CHECK: int errors[23];
@@ -146,8 +147,8 @@ int main(int argc, char **argv) {
   a = sizeof(context);
   a = sizeof context;
 
-  //CHECK:sycl::event event;
-  //CHECK-NEXT:a = sizeof(sycl::event);
+  //CHECK:dpct::event_ptr event;
+  //CHECK-NEXT:a = sizeof(dpct::event_ptr);
   //CHECK-NEXT:a = sizeof(event);
   //CHECK-NEXT:a = sizeof event;
   cudaEvent_t event;
@@ -155,8 +156,8 @@ int main(int argc, char **argv) {
   a = sizeof(event);
   a = sizeof event;
 
-  //CHECK:sycl::queue *stream;
-  //CHECK-NEXT:a = sizeof(sycl::queue *);
+  //CHECK:dpct::queue_ptr stream;
+  //CHECK-NEXT:a = sizeof(dpct::queue_ptr);
   //CHECK-NEXT:a = sizeof(stream);
   //CHECK-NEXT:a = sizeof stream;
   cudaStream_t stream;
@@ -362,8 +363,8 @@ int main(int argc, char **argv) {
   a = sizeof(event_st);
   a = sizeof event_st;
 
-  //CHECK:sycl::queue *blashandle;
-  //CHECK-NEXT:a = sizeof(sycl::queue *);
+  //CHECK:dpct::queue_ptr blashandle;
+  //CHECK-NEXT:a = sizeof(dpct::queue_ptr);
   //CHECK-NEXT:a = sizeof(blashandle);
   //CHECK-NEXT:a = sizeof blashandle;
   cublasHandle_t blashandle;
@@ -386,20 +387,20 @@ int main(int argc, char **argv) {
 
 __global__ void foo() {
   void *p;
-  // CHECK: (sycl::queue *)p;
-  // CHECK-NEXT: (sycl::queue **)p;
-  // CHECK-NEXT: (sycl::queue ***)p;
-  // CHECK-NEXT: (sycl::queue ****)p;
+  // CHECK: (dpct::queue_ptr) p;
+  // CHECK-NEXT: (dpct::queue_ptr *)p;
+  // CHECK-NEXT: (dpct::queue_ptr **)p;
+  // CHECK-NEXT: (dpct::queue_ptr ***)p;
   (cudaStream_t)p;
   (cudaStream_t *)p;
   (cudaStream_t **)p;
   (cudaStream_t ***)p;
 
 
-  // CHECK: malloc(sizeof(sycl::queue **));
-  // CHECK-NEXT: malloc(sizeof(sycl::queue ***));
-  // CHECK-NEXT: malloc(sizeof(sycl::queue ****));
-  // CHECK-NEXT: malloc(sizeof(sycl::queue *&));
+  // CHECK: malloc(sizeof(dpct::queue_ptr *));
+  // CHECK-NEXT: malloc(sizeof(dpct::queue_ptr **));
+  // CHECK-NEXT: malloc(sizeof(dpct::queue_ptr ***));
+  // CHECK-NEXT: malloc(sizeof(dpct::queue_ptr &));
   malloc(sizeof(cudaStream_t *));
   malloc(sizeof(cudaStream_t **));
   malloc(sizeof(cudaStream_t ***));
@@ -428,7 +429,7 @@ __global__ void foo() {
 
 template <typename T> struct S {};
 
-// CHECK: template <> struct S<sycl::queue *> {};
+// CHECK: template <> struct S<dpct::queue_ptr> {};
 // CHECK-NEXT: template <> struct S<sycl::queue> {};
 // CHECK-NEXT: template <> struct S<sycl::float2> {};
 // CHECK-NEXT: template <> struct S<sycl::float4> {};
@@ -438,7 +439,7 @@ template <> struct S<float2> {};
 template <> struct S<float4> {};
 
 void foobar() {
-  // CHECK: S<sycl::queue *> s0;
+  // CHECK: S<dpct::queue_ptr> s0;
   S<cudaStream_t> s0;
   // CHECK: S<sycl::float2> s1;
   S<float2> s1;
@@ -447,63 +448,67 @@ void foobar() {
 }
 
 void fun() {
-  // CHECK: sycl::queue **p, *s, *&r = s;
+  // CHECK: dpct::device_ext &dev_ct1 = dpct::get_current_device();
+  // CHECK: sycl::queue &q_ct1 = dev_ct1.default_queue();
+  // CHECK: dpct::queue_ptr *p, s, &r = s;
   cudaStream_t *p, s, &r = s;
-  // CHECK: sycl::queue *const s_2 = NULL, *const * p_2, *const &r_2 = s;
+  // CHECK: dpct::queue_ptr const s_2 = &q_ct1, *p_2, &r_2 = s;
   cudaStream_t const s_2 = NULL, *p_2, &r_2 = s;
-  // CHECK: sycl::queue *const &r_3 = s, *const * p_3, *const s_3 = NULL;
+  // CHECK: const dpct::queue_ptr &r_3 = s, *p_3, s_3 = &q_ct1;
   const cudaStream_t &r_3 = s, *p_3, s_3 = NULL;
 
-  // CHECK: sycl::queue *const *pc, *const sc = s, *const &rc = s;
+  // CHECK: dpct::queue_ptr const *pc, sc = s, &rc = s;
   cudaStream_t const *pc, sc = s, &rc = s;
-  // CHECK: sycl::queue *const *pc1, *const sc1 = s, *const &rc1 = s;
+  // CHECK: const dpct::queue_ptr *pc1, sc1 = s, &rc1 = s;
   const cudaStream_t *pc1, sc1 = s, &rc1 = s;
-  // CHECK: sycl::queue *s1, **p1, *&r1 = *p1;
+  // CHECK: dpct::queue_ptr s1, *p1, &r1 = *p1;
   cudaStream_t s1, *p1, &r1 = *p1;
-  // CHECK: sycl::queue *&r2 = s1, **p2, *s2;
+  // CHECK: dpct::queue_ptr &r2 = s1, *p2, s2;
   cudaStream_t &r2 = s1, *p2, s2;
 
-  // CHECK: sycl::queue *&r3 = s2,
-  // CHECK-NEXT:             **p3,
-  // CHECK-NEXT:             *s3;
+  // CHECK: dpct::queue_ptr &r3 = s2,
+  // CHECK-NEXT:             *p3,
+  // CHECK-NEXT:             s3;
   cudaStream_t &r3 = s2,
                *p3,
                s3;
 
-  // CHECK: sycl::queue *const s4 = s1, *const s5 = s2;
+  // CHECK: dpct::queue_ptr const s4 = s1, s5 = s2;
   cudaStream_t const s4 = s1, s5 = s2;
-  // CHECK: sycl::queue *const s6 = s1, *const s7 = s2;
+  // CHECK: const dpct::queue_ptr s6 = s1, s7 = s2;
   const cudaStream_t s6 = s1, s7 = s2;
 
-  // CHECK: sycl::queue *const *s8, *const *s9;
+  // CHECK: dpct::queue_ptr const *s8, *s9;
   cudaStream_t const *s8, *s9;
-  // CHECK: sycl::queue *const *s10, *const *s11;
+  // CHECK: const dpct::queue_ptr *s10, *s11;
   const cudaStream_t *s10, *s11;
-  // CHECK: sycl::queue **const s12 = NULL, **const s13 = NULL;
+  // CHECK: dpct::queue_ptr *const s12 = &q_ct1, *const s13 = &q_ct1;
   cudaStream_t *const s12 = NULL, *const s13 = NULL;
-  // CHECK: sycl::queue *const *const s14 = NULL, *const *const s15 = NULL;
+  // CHECK: const dpct::queue_ptr *const s14 = &q_ct1, *const s15 = &q_ct1;
   const cudaStream_t *const s14 = NULL, *const s15 = NULL;
 }
 
 void fun2() {
-  // CHECK: sycl::queue *s, *s2;
+  // CHECK: dpct::device_ext &dev_ct1 = dpct::get_current_device();
+  // CHECK: sycl::queue &q_ct1 = dev_ct1.default_queue();
+  // CHECK: dpct::queue_ptr s, s2;
   cudaStream_t s, s2;
-  // CHECK: sycl::queue *const s3 = NULL, *const s4 = NULL;
+  // CHECK: dpct::queue_ptr const s3 = &q_ct1, s4 = &q_ct1;
   cudaStream_t const s3 = NULL, s4 = NULL;
-  // CHECK: sycl::queue *const s5 = NULL, *const s6 = NULL;
+  // CHECK: const dpct::queue_ptr s5 = &q_ct1, s6 = &q_ct1;
   const cudaStream_t s5 = NULL, s6 = NULL;
 
-  // CHECK: sycl::queue **s7, **const s8 = NULL;
+  // CHECK: dpct::queue_ptr *s7, *const s8 = &q_ct1;
   cudaStream_t *s7, *const s8 = NULL;
-  // CHECK: sycl::queue **const s9 = NULL, **s10;
+  // CHECK: dpct::queue_ptr *const s9 = &q_ct1, *s10;
   cudaStream_t *const s9 = NULL, *s10;
-  // CHECK: sycl::queue *const *s11, *const *const s12 = NULL;
+  // CHECK: const dpct::queue_ptr *s11, *const s12 = &q_ct1;
   const cudaStream_t *s11, *const s12 = NULL;
-  // CHECK: sycl::queue *const *const s13 = NULL, *const * s14;
+  // CHECK: dpct::queue_ptr const *const s13 = &q_ct1, *s14;
   cudaStream_t const *const s13 = NULL, *s14;
-  // CHECK: sycl::queue *const *const s15 = NULL, *const * s16;
+  // CHECK: const dpct::queue_ptr *const s15 = &q_ct1, *s16;
   const cudaStream_t *const s15 = NULL, *s16;
-  // CHECK: sycl::queue *const *s17, *const *const s18 = NULL;
+  // CHECK: dpct::queue_ptr const *s17, *const s18 = &q_ct1;
   cudaStream_t const *s17, *const s18 = NULL;
 }
 
@@ -566,12 +571,12 @@ void fun3() {
 }
 
 void fun4() {
-  // CHECK: std::vector<sycl::queue *> vec1;
-  // CHECK-NEXT: vec1.push_back(nullptr);
-  // CHECK-NEXT: std::vector<sycl::queue *> vec2;
-  // CHECK-NEXT: vec2.push_back(nullptr);
-  // CHECK-NEXT: sycl::queue *a1 = nullptr;
-  // CHECK-NEXT: sycl::queue *a2 = nullptr;
+  // CHECK: std::vector<dpct::queue_ptr> vec1;
+  // CHECK-NEXT: vec1.push_back(dpct::queue_ptr());
+  // CHECK-NEXT: std::vector<dpct::queue_ptr> vec2;
+  // CHECK-NEXT: vec2.push_back(dpct::queue_ptr());
+  // CHECK-NEXT: dpct::queue_ptr a1 = dpct::queue_ptr();
+  // CHECK-NEXT: dpct::queue_ptr a2 = dpct::queue_ptr();
   std::vector<cudaStream_t> vec1;
   vec1.push_back(cudaStream_t());
   std::vector<CUstream> vec2;
@@ -606,4 +611,65 @@ void foo_2(cudaDataType_t a1, cudaDataType a2, cublasDataType_t a3, cublasComput
   cudaDataType b2 = a2;
   cublasDataType_t b3 = a3;
   cublasComputeType_t b4 = a4;
+}
+
+__device__ void foo_3() {
+  // CHECK: sycl::range<3> d3 = {3, 2, 1}, *pd3 = &d3;
+  dim3 d3 = {1, 2, 3}, *pd3 = &d3;
+  int64_t m = 0;
+  // CHECK: m = sycl::min(m, int64_t((*pd3)[2]));
+  // CHECK-NEXT: m = sycl::min(m, int64_t((*pd3)[1]));
+  // CHECK-NEXT: m = sycl::min(m, int64_t((*pd3)[0]));
+  // CHECK-NEXT: m = sycl::min(m, int64_t(d3[2]));
+  // CHECK-NEXT: m = sycl::min(m, int64_t(d3[1]));
+  // CHECK-NEXT: m = sycl::min(m, int64_t(d3[0]));
+  m = std::min(m, int64_t{pd3->x});
+  m = std::min(m, int64_t{pd3->y});
+  m = std::min(m, int64_t{pd3->z});
+  m = std::min(m, int64_t{d3.x});
+  m = std::min(m, int64_t{d3.y});
+  m = std::min(m, int64_t{d3.z});
+}
+
+template <typename integer>
+constexpr inline integer ceil_div(integer n, integer m) {
+  return (n + m - 1) / m;
+}
+
+void foo_4() {
+  const int64_t num_irows = 32;
+  const int64_t num_orows = 32;
+  // CHECK: sycl::range<3> threads(1, 1, 32);
+  dim3 threads(32);
+  int64_t maxGridDim = 1024;
+  // CHECK: sycl::range<3> grid_1(1, std::min(maxGridDim, ceil_div(num_irows, int64_t(threads[2]))), std::min(maxGridDim, num_orows));
+  dim3 grid_1(std::min(maxGridDim, num_orows), std::min(maxGridDim, ceil_div(num_irows, int64_t{threads.x})));
+
+  int row_size = 16;
+  // CHECK: sycl::range<3> grid_2(1, 1, std::min<int>(maxGridDim, ceil_div(row_size, int(threads[1]))));
+  dim3 grid_2(std::min<int>(maxGridDim, ceil_div(row_size, int(threads.y))));
+
+  // CHECK: int64_t m = int64_t(threads[1]);
+  int64_t m = int64_t{threads.y};
+  // CHECK: m = int64_t(threads[1]);
+  m = int64_t{threads.y};
+  typedef int64_t MY_INT64;
+  // CHECK: m = std::min(int64_t(threads[2]), MY_INT64(threads[0]));
+  m = std::min(int64_t{threads.x}, MY_INT64{threads.z});
+
+  int num = 1024;
+  // CHECK: m = int64_t{num};
+  m = int64_t{num};
+  // CHECK: m = std::min(int64_t(threads[2]), MY_INT64{num});
+  m = std::min(int64_t{threads.x}, MY_INT64{num});
+
+  struct CFoo {
+    int64_t a = 0;
+    CFoo(int64_t b) : a(b) {}
+    operator int64_t() { return a; }
+  };
+  // CHECK: CFoo cfoo{num};
+  CFoo cfoo{num};
+  // CHECK: m = std::min(int64_t(threads[2]), int64_t{cfoo});
+  m = std::min(int64_t{threads.x}, int64_t{cfoo});
 }

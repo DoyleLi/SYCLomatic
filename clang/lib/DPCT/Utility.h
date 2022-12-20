@@ -417,7 +417,9 @@ bool isAssigned(const clang::Stmt *S);
 
 std::string getTempNameForExpr(const clang::Expr *E, bool HandleLiteral = false,
                                bool KeepLastUnderline = true,
-                               bool IsInMacroDefine = false);
+                               bool IsInMacroDefine = false,
+                               clang::SourceLocation CallBegin = clang::SourceLocation(),
+                               clang::SourceLocation CallEnd = clang::SourceLocation());
 bool isOuterMostMacro(const clang::Stmt *E);
 bool isSameLocation(const clang::SourceLocation L1,
                     const clang::SourceLocation L2);
@@ -429,7 +431,7 @@ bool isExprStraddle(const clang::Stmt *S);
 bool isContainMacro(const clang::Expr *E);
 std::string getDrefName(const clang::Expr *E);
 std::vector<const clang::DeclaratorDecl *>
-getSiblingDecls(const clang::DeclaratorDecl *DD);
+getAllDecls(const clang::DeclaratorDecl *DD);
 std::string deducePointerType(const clang::DeclaratorDecl *DD,
                               std::string TypeName);
 bool isAnIdentifierOrLiteral(const clang::Expr *E);
@@ -449,7 +451,6 @@ std::string getNestedNameSpecifierString(const clang::NestedNameSpecifier *);
 std::string getNestedNameSpecifierString(const clang::NestedNameSpecifierLoc &);
 
 bool needExtraParens(const clang::Expr *);
-bool isPredefinedStreamHandle(const clang::Expr *E);
 std::pair<clang::SourceLocation, clang::SourceLocation>
 getTheOneBeforeLastImmediateExapansion(const clang::SourceLocation Begin,
                                        const clang::SourceLocation End);
@@ -464,10 +465,10 @@ clang::SourceLocation getLocInRange(clang::SourceLocation Loc,
                                     clang::SourceRange Range);
 std::pair<clang::SourceLocation, clang::SourceLocation>
 getRangeInRange(const clang::Stmt *E, clang::SourceLocation RangeBegin,
-                clang::SourceLocation RangeEnd);
+                clang::SourceLocation RangeEnd, bool IncludeLastToken = true);
 std::pair<clang::SourceLocation, clang::SourceLocation>
 getRangeInRange(clang::SourceRange Range, clang::SourceLocation RangeBegin,
-                clang::SourceLocation RangeEnd);
+                clang::SourceLocation RangeEnd, bool IncludeLastToken = true);
 unsigned int calculateIndentWidth(const clang::CUDAKernelCallExpr *Node,
                                   clang::SourceLocation SL, bool &Flag);
 bool isIncludedFile(const std::string &CurrentFile,
@@ -483,6 +484,8 @@ std::string getFinalCastTypeNameStr(std::string CastTypeName);
 bool isLexicallyInLocalScope(const clang::Decl *);
 const clang::DeclaratorDecl *getHandleVar(const clang::Expr *Arg);
 bool checkPointerInStructRecursively(const clang::DeclRefExpr *DRE);
+bool checkPointerInStructRecursively(const clang::RecordDecl *);
+clang::RecordDecl *getRecordDecl(clang::QualType QT);
 clang::SourceLocation
 getImmSpellingLocRecursive(const clang::SourceLocation Loc);
 clang::dpct::FFTTypeEnum getFFTTypeFromValue(std::int64_t Value);
@@ -564,4 +567,8 @@ void insertHeaderForTypeRule(std::string, clang::SourceLocation);
 std::string getRemovedAPIWarningMessage(std::string FuncName);
 std::string getBaseTypeStr(const clang::CallExpr *CE);
 std::string getArgTypeStr(const clang::CallExpr *CE, unsigned int Idx);
+std::string getFunctionName(const clang::FunctionDecl *Node);
+std::string getFunctionName(const clang::UnresolvedLookupExpr *Node);
+std::string getFunctionName(const clang::FunctionTemplateDecl *Node);
+bool isLambda(const clang::FunctionDecl *FD);
 #endif // DPCT_UTILITY_H

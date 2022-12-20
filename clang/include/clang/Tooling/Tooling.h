@@ -66,9 +66,7 @@ void SetCompileTargetsMap(
         &CompileTargetsMap);
 void SetFileProcessHandle(StringRef InRoot, StringRef OutRoot,
                           FileProcessType FileProcessHandle);
-void SetProcessedFile(std::set<std::string> &ProcessedFile);
 void SetReProcessFile(std::set<std::string> &ReProcessFile);
-void CollectProcessedFile(std::string File);
 std::set<std::string> GetReProcessFile();
 void SetGetRunRound(std::function<unsigned int()> Func);
 unsigned int DoGetRunRound();
@@ -562,7 +560,7 @@ void addTargetAndModeForProgramName(std::vector<std::string> &CommandLine,
 
 /// Creates a \c CompilerInvocation.
 CompilerInvocation *newInvocation(DiagnosticsEngine *Diagnostics,
-                                  const llvm::opt::ArgStringList &CC1Args,
+                                  ArrayRef<const char *> CC1Args,
                                   const char *const BinaryName);
 
 } // namespace tooling

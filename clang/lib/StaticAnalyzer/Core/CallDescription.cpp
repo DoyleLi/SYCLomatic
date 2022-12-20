@@ -32,7 +32,7 @@ static MaybeCount readRequiredParams(MaybeCount RequiredArgs,
     return RequiredParams;
   if (RequiredArgs)
     return RequiredArgs;
-  return None;
+  return std::nullopt;
 }
 
 ento::CallDescription::CallDescription(CallDescriptionFlags Flags,
@@ -86,7 +86,7 @@ bool ento::CallDescription::matchesImpl(const FunctionDecl *Callee,
            (!RequiredParams || *RequiredParams <= ParamCount);
   }
 
-  if (!II.hasValue()) {
+  if (!II) {
     II = &FD->getASTContext().Idents.get(getFunctionName());
   }
 
@@ -94,7 +94,7 @@ bool ento::CallDescription::matchesImpl(const FunctionDecl *Callee,
                                 const NamedDecl *ND) -> bool {
     DeclarationName Name = ND->getDeclName();
     if (const auto *II = Name.getAsIdentifierInfo())
-      return II == CD.II.getValue(); // Fast case.
+      return II == *CD.II; // Fast case.
 
     // Fallback to the slow stringification and comparison for:
     // C++ overloaded operators, constructors, destructors, etc.

@@ -35,6 +35,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -57,7 +58,7 @@ llvm::Optional<llvm::StringRef> getArgStr(const clang::Diagnostic &Info,
   case DiagnosticsEngine::ak_std_string:
     return llvm::StringRef(Info.getArgStdStr(Index));
   default:
-    return llvm::None;
+    return std::nullopt;
   }
 }
 
@@ -197,8 +198,7 @@ std::vector<Fix> IncludeFixer::fix(DiagnosticsEngine::Level DiagLevel,
   case diag::err_no_member_template:
   case diag::err_no_member_template_suggest:
   case diag::warn_implicit_function_decl:
-  case diag::ext_implicit_function_decl:
-  case diag::err_opencl_implicit_function_decl:
+  case diag::ext_implicit_function_decl_c99:
     dlog("Unresolved name at {0}, last typo was {1}",
          Info.getLocation().printToString(Info.getSourceManager()),
          LastUnresolvedName
@@ -241,7 +241,7 @@ std::vector<Fix> IncludeFixer::fix(DiagnosticsEngine::Level DiagLevel,
     if (Info.getNumArgs() > 0)
       if (auto Header = getArgStr(Info, 0))
         return only(insertHeader(("<" + *Header + ">").str(),
-                                 getArgStr(Info, 1).getValueOr("")));
+                                 getArgStr(Info, 1).value_or("")));
     break;
   }
 
@@ -255,7 +255,7 @@ llvm::Optional<Fix> IncludeFixer::insertHeader(llvm::StringRef Spelled,
   if (auto Edit = Inserter->insert(Spelled))
     F.Edits.push_back(std::move(*Edit));
   else
-    return llvm::None;
+    return std::nullopt;
 
   if (Symbol.empty())
     F.Message = llvm::formatv("Include {0}", Spelled);
@@ -355,7 +355,7 @@ llvm::Optional<std::string> qualifiedByUnresolved(const SourceManager &SM,
     NextLoc = IDTok->getLocation();
   }
   if (Result.empty())
-    return llvm::None;
+    return std::nullopt;
   return Result;
 }
 
@@ -377,10 +377,10 @@ llvm::Optional<std::string> getSpelledSpecifier(const CXXScopeSpec &SS,
     const SourceManager &SM) {
   // Support specifiers written within a single macro argument.
   if (!SM.isWrittenInSameFile(SS.getBeginLoc(), SS.getEndLoc()))
-    return llvm::None;
+    return std::nullopt;
   SourceRange Range(SM.getTopMacroCallerLoc(SS.getBeginLoc()), SM.getTopMacroCallerLoc(SS.getEndLoc()));
   if (Range.getBegin().isMacroID() || Range.getEnd().isMacroID())
-    return llvm::None;
+    return std::nullopt;
 
   return (toSourceCode(SM, Range) + "::").str();
 }
@@ -418,7 +418,7 @@ llvm::Optional<CheapUnresolvedName> extractUnresolvedNameCheaply(
       } else {
         // We don't fix symbols in scopes that are not top-level e.g. class
         // members, as we don't collect includes for them.
-        return llvm::None;
+        return std::nullopt;
       }
     }
   }
@@ -476,7 +476,7 @@ collectAccessibleScopes(Sema &Sem, const DeclarationNameInfo &Typo, Scope *S,
   Sem.LookupVisibleDecls(S, LookupKind, Collector,
                          /*IncludeGlobalScope=*/false,
                          /*LoadExternal=*/false);
-  std::sort(Scopes.begin(), Scopes.end());
+  llvm::sort(Scopes);
   Scopes.erase(std::unique(Scopes.begin(), Scopes.end()), Scopes.end());
   return Scopes;
 }
@@ -545,7 +545,7 @@ IncludeFixer::unresolvedNameRecorder() {
 }
 
 std::vector<Fix> IncludeFixer::fixUnresolvedName() const {
-  assert(LastUnresolvedName.hasValue());
+  assert(LastUnresolvedName);
   auto &Unresolved = *LastUnresolvedName;
   vlog("Trying to fix unresolved name \"{0}\" in scopes: [{1}]",
        Unresolved.Name, llvm::join(Unresolved.Scopes, ", "));
@@ -571,7 +571,7 @@ IncludeFixer::fuzzyFindCached(const FuzzyFindRequest &Req) const {
     return &I->second;
 
   if (IndexRequestCount >= IndexRequestLimit)
-    return llvm::None;
+    return std::nullopt;
   IndexRequestCount++;
 
   SymbolSlab::Builder Matches;
@@ -596,7 +596,7 @@ IncludeFixer::lookupCached(const SymbolID &ID) const {
     return &I->second;
 
   if (IndexRequestCount >= IndexRequestLimit)
-    return llvm::None;
+    return std::nullopt;
   IndexRequestCount++;
 
   // FIXME: consider batching the requests for all diagnostics.

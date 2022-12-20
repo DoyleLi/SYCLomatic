@@ -36,7 +36,7 @@
 ///  the instructions in bb.then will only overwrite lanes that will never be
 ///  accessed in bb.else.
 ///
-///  This pass aims to to tell register allocator that %a is in-fact dead,
+///  This pass aims to tell register allocator that %a is in-fact dead,
 ///  through inserting a phi-node in bb.flow saying that %a is undef when coming
 ///  from bb.then, and then replace the uses in the bb.else with the result of
 ///  newly inserted phi.
@@ -344,9 +344,13 @@ void SIOptimizeVGPRLiveRange::collectWaterfallCandidateRegisters(
     }
     if (MBB == LoopEnd)
       break;
-    assert(MBB->pred_size() == 1 ||
-           (MBB == LoopHeader && MBB->pred_size() == 2));
-    assert(MBB->succ_size() == 1);
+
+    if ((MBB != LoopHeader && MBB->pred_size() != 1) ||
+        (MBB == LoopHeader && MBB->pred_size() != 2) || MBB->succ_size() != 1) {
+      LLVM_DEBUG(dbgs() << "Unexpected edges in CFG, ignoring loop\n");
+      return;
+    }
+
     MBB = *MBB->succ_begin();
   }
 
@@ -641,6 +645,10 @@ bool SIOptimizeVGPRLiveRange::runOnMachineFunction(MachineFunction &MF) {
         MachineBasicBlock *IfTarget = MI.getOperand(2).getMBB();
         auto *Endif = getElseTarget(IfTarget);
         if (!Endif)
+          continue;
+
+        // Skip unexpected control flow.
+        if (!MDT->dominates(&MBB, IfTarget) || !MDT->dominates(IfTarget, Endif))
           continue;
 
         SmallSetVector<MachineBasicBlock *, 16> ElseBlocks;

@@ -7,14 +7,13 @@
 //===----------------------------------------------------------------------===//
 
 #pragma once
-#include <CL/sycl/functional.hpp>
+#include <sycl/functional.hpp>
 
 #include <functional>
 
-__SYCL_INLINE_NAMESPACE(cl) {
 namespace sycl {
-namespace ext {
-namespace oneapi {
+__SYCL_INLINE_VER_NAMESPACE(_V1) {
+namespace ext::oneapi {
 
 template <typename T = void> using plus = std::plus<T>;
 template <typename T = void> using multiplies = std::multiplies<T>;
@@ -24,8 +23,7 @@ template <typename T = void> using bit_and = std::bit_and<T>;
 template <typename T = void> using maximum = sycl::maximum<T>;
 template <typename T = void> using minimum = sycl::minimum<T>;
 
-} // namespace oneapi
-} // namespace ext
+} // namespace ext::oneapi
 
 #ifdef __SYCL_DEVICE_ONLY__
 namespace detail {
@@ -37,17 +35,17 @@ struct GroupOpFP {};
 template <typename T, typename = void> struct GroupOpTag;
 
 template <typename T>
-struct GroupOpTag<T, detail::enable_if_t<detail::is_sigeninteger<T>::value>> {
+struct GroupOpTag<T, std::enable_if_t<detail::is_sigeninteger<T>::value>> {
   using type = GroupOpISigned;
 };
 
 template <typename T>
-struct GroupOpTag<T, detail::enable_if_t<detail::is_sugeninteger<T>::value>> {
+struct GroupOpTag<T, std::enable_if_t<detail::is_sugeninteger<T>::value>> {
   using type = GroupOpIUnsigned;
 };
 
 template <typename T>
-struct GroupOpTag<T, detail::enable_if_t<detail::is_sgenfloat<T>::value>> {
+struct GroupOpTag<T, std::enable_if_t<detail::is_sgenfloat<T>::value>> {
   using type = GroupOpFP;
 };
 
@@ -56,13 +54,13 @@ struct GroupOpTag<T, detail::enable_if_t<detail::is_sgenfloat<T>::value>> {
   static T calc(GroupTag, T x, BinaryOperation) {                              \
     using ConvertedT = detail::ConvertToOpenCLType_t<T>;                       \
                                                                                \
-    using OCLT =                                                               \
-        conditional_t<std::is_same<ConvertedT, cl_char>() ||                   \
-                          std::is_same<ConvertedT, cl_short>(),                \
-                      cl_int,                                                  \
-                      conditional_t<std::is_same<ConvertedT, cl_uchar>() ||    \
-                                        std::is_same<ConvertedT, cl_ushort>(), \
-                                    cl_uint, ConvertedT>>;                     \
+    using OCLT = std::conditional_t<                                           \
+        std::is_same<ConvertedT, cl_char>() ||                                 \
+            std::is_same<ConvertedT, cl_short>(),                              \
+        cl_int,                                                                \
+        std::conditional_t<std::is_same<ConvertedT, cl_uchar>() ||             \
+                               std::is_same<ConvertedT, cl_ushort>(),          \
+                           cl_uint, ConvertedT>>;                              \
     OCLT Arg = x;                                                              \
     OCLT Ret =                                                                 \
         __spirv_Group##SPIRVOperation(S, static_cast<unsigned int>(O), Arg);   \
@@ -104,5 +102,5 @@ static T calc(typename GroupOpTag<T>::type, T x, BinaryOperation<void>) {
 } // namespace detail
 #endif // __SYCL_DEVICE_ONLY__
 
+} // __SYCL_INLINE_VER_NAMESPACE(_V1)
 } // namespace sycl
-} // __SYCL_INLINE_NAMESPACE(cl)

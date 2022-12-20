@@ -1,24 +1,22 @@
 add_entrypoint_library(
-  llvmlibc
+  ${LIBC_TARGET}
   DEPENDS
   ${TARGET_LLVMLIBC_ENTRYPOINTS}
 )
+set_target_properties(
+  ${LIBC_TARGET}
+  PROPERTIES
+    ARCHIVE_OUTPUT_NAME ${LIBC_ARCHIVE_NAME}
+)
 
 if(LLVM_ENABLE_PER_TARGET_RUNTIME_DIR)
-  set(LIBC_INSTALL_LIBRARY_DIR lib${LLVM_LIBDIR_SUFFIX}/${LLVM_DEFAULT_TARGET_TRIPLE})
+  set(LIBC_INSTALL_LIBRARY_DIR lib${LLVM_LIBDIR_SUFFIX}/${LLVM_TARGET_TRIPLE})
 else()
   set(LIBC_INSTALL_LIBRARY_DIR lib${LLVM_LIBDIR_SUFFIX})
 endif()
 
 install(
-  TARGETS llvmlibc
+  TARGETS ${LIBC_TARGET}
   ARCHIVE DESTINATION "${LIBC_INSTALL_LIBRARY_DIR}"
-  COMPONENT llvmlibc
-)
-
-add_custom_target(
-    install-llvmlibc
-    DEPENDS llvmlibc
-    COMMAND "${CMAKE_COMMAND}" -DCMAKE_INSTALL_COMPONENT=llvmlibc
-            -P "${LIBC_BINARY_DIR}/cmake_install.cmake"
+  COMPONENT ${LIBC_COMPONENT}
 )

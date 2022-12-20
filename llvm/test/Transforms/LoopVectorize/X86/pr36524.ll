@@ -30,9 +30,6 @@ define void @foo(i64* %ptr, i32* %ptr.2) {
 ; CHECK-NEXT:    [[TMP3:%.*]] = add i32 [[TMP0]], 2
 ; CHECK-NEXT:    [[TMP4:%.*]] = add i32 [[TMP0]], 3
 ; CHECK-NEXT:    [[TMP5:%.*]] = add i64 [[INDEX]], 0
-; CHECK-NEXT:    store i32 [[TMP1]], i32* [[PTR_2]], align 4, !alias.scope !0, !noalias !3
-; CHECK-NEXT:    store i32 [[TMP2]], i32* [[PTR_2]], align 4, !alias.scope !0, !noalias !3
-; CHECK-NEXT:    store i32 [[TMP3]], i32* [[PTR_2]], align 4, !alias.scope !0, !noalias !3
 ; CHECK-NEXT:    store i32 [[TMP4]], i32* [[PTR_2]], align 4, !alias.scope !0, !noalias !3
 ; CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds i64, i64* [[PTR]], i64 [[TMP5]]
 ; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds i64, i64* [[TMP6]], i32 0
@@ -49,6 +46,8 @@ define void @foo(i64* %ptr, i32* %ptr.2) {
 ; CHECK-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ 80, [[MIDDLE_BLOCK]] ], [ 0, [[ENTRY:%.*]] ], [ 0, [[VECTOR_MEMCHECK]] ]
 ; CHECK-NEXT:    [[BC_RESUME_VAL6:%.*]] = phi i64 [ 82, [[MIDDLE_BLOCK]] ], [ 2, [[ENTRY]] ], [ 2, [[VECTOR_MEMCHECK]] ]
 ; CHECK-NEXT:    br label [[LOOP:%.*]]
+; CHECK:       vector.scevcheck:
+; CHECK-NEXT:    unreachable
 ; CHECK:       loop:
 ; CHECK-NEXT:    [[CAN_IV:%.*]] = phi i64 [ [[BC_RESUME_VAL]], [[SCALAR_PH]] ], [ [[CAN_IV_NEXT:%.*]], [[LOOP]] ]
 ; CHECK-NEXT:    [[TMP10:%.*]] = phi i64 [ [[BC_RESUME_VAL6]], [[SCALAR_PH]] ], [ [[TMP13:%.*]], [[LOOP]] ]

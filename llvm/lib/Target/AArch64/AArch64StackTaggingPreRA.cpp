@@ -50,7 +50,6 @@ cl::opt<UncheckedLdStMode> ClUncheckedLdSt(
 
 static cl::opt<bool>
     ClFirstSlot("stack-tagging-first-slot-opt", cl::Hidden, cl::init(true),
-                cl::ZeroOrMore,
                 cl::desc("Apply first slot optimization for stack tagging "
                          "(eliminate ADDG Rt, Rn, 0, 0)."));
 
@@ -256,7 +255,7 @@ Optional<int> AArch64StackTaggingPreRA::findFirstSlotCandidate() {
   // - Any other instruction may benefit from being pinned to offset 0.
   LLVM_DEBUG(dbgs() << "AArch64StackTaggingPreRA::findFirstSlotCandidate\n");
   if (!ClFirstSlot)
-    return None;
+    return std::nullopt;
 
   DenseMap<SlotWithTag, int> RetagScore;
   SlotWithTag MaxScoreST{-1, -1};
@@ -306,7 +305,7 @@ Optional<int> AArch64StackTaggingPreRA::findFirstSlotCandidate() {
   }
 
   if (MaxScoreST.FI < 0)
-    return None;
+    return std::nullopt;
 
   // If FI's tag is already 0, we are done.
   if (MaxScoreST.Tag == 0)

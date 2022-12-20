@@ -79,10 +79,8 @@ static StringRef InRoot;
 static StringRef OutRoot;
 static FileProcessType FileProcessHandle = nullptr;
 static std::set<std::string> *ReProcessFilePtr = nullptr;
-static std::set<std::string> *ProcessedFilePtr = nullptr;
 static std::function<unsigned int()> GetRunRoundPtr;
 static std::set<std::string> *ModuleFiles = nullptr;
-static unsigned int *ColorOptionPtr = nullptr;
 static std::function<bool(const std::string &, bool)> IsExcludePathPtr;
 extern std::string VcxprojFilePath;
 
@@ -134,10 +132,6 @@ bool isFileProcessAllSet() {
   return FileProcessHandle != nullptr;
 }
 
-void SetProcessedFile(std::set<std::string> &ProcessedFile){
-  ProcessedFilePtr = &ProcessedFile;
-}
-
 void SetReProcessFile(std::set<std::string> &ReProcessFile){
   ReProcessFilePtr = &ReProcessFile;
 }
@@ -151,12 +145,6 @@ unsigned int DoGetRunRound(){
     return GetRunRoundPtr();
   }
   return 0;
-}
-
-void CollectProcessedFile(std::string File){
-  if(ProcessedFilePtr){
-    (*ProcessedFilePtr).insert(File);
-  }
 }
 
 std::set<std::string> GetReProcessFile(){
@@ -197,16 +185,6 @@ std::string getRealFilePath(std::string File, clang::FileManager *FM){
 #else
   return File;
 #endif
-}
-
-void SetColorOptionPtr(unsigned int &ColorOption) {
-  ColorOptionPtr = &ColorOption;
-}
-
-void SetColorOptionValue(unsigned int ColorOption) {
-  if(ColorOptionPtr) {
-    *ColorOptionPtr = ColorOption;
-  }
 }
 
 void SetIsExcludePathHandler(std::function<bool(const std::string &, bool)> Func){
@@ -284,7 +262,7 @@ static bool ignoreExtraCC1Commands(const driver::Compilation *Compilation) {
       OffloadCompilation = true;
 
   if (Jobs.size() > 1) {
-    for (auto A : Actions){
+    for (auto *A : Actions){
       // On MacOSX real actions may end up being wrapped in BindArchAction
       if (isa<driver::BindArchAction>(A))
         A = *A->input_begin();
@@ -347,7 +325,7 @@ getCC1Arguments(DiagnosticsEngine *Diagnostics,
 
 /// Returns a clang build invocation initialized from the CC1 flags.
 CompilerInvocation *newInvocation(DiagnosticsEngine *Diagnostics,
-                                  const llvm::opt::ArgStringList &CC1Args,
+                                  ArrayRef<const char *> CC1Args,
                                   const char *const BinaryName) {
   assert(!CC1Args.empty() && "Must at least contain the program name!");
   CompilerInvocation *Invocation = new CompilerInvocation;
@@ -529,7 +507,7 @@ ToolInvocation::~ToolInvocation() {
 }
 
 bool ToolInvocation::run() {
-  std::vector<const char*> Argv;
+  llvm::opt::ArgStringList Argv;
   for (const std::string &Str : CommandLine)
     Argv.push_back(Str.c_str());
   const char *const BinaryName = Argv[0];
@@ -540,7 +518,6 @@ bool ToolInvocation::run() {
     DiagOpts = &*ParsedDiagOpts;
   }
 #ifdef SYCLomatic_CUSTOMIZATION
-  SetColorOptionValue(DiagOpts->ShowColors);
   DiagnosticPrinter =new TextDiagnosticPrinter(DiagnosticsOS(), &*DiagOpts);
   DiagConsumer = DiagnosticPrinter;
 #endif // SYCLomatic_CUSTOMIZATION
@@ -553,6 +530,17 @@ bool ToolInvocation::run() {
   // `DiagConsumer` might expect a `SourceManager` to be present.
   SourceManager SrcMgr(*Diagnostics, *Files);
   Diagnostics->setSourceManager(&SrcMgr);
+
+  // We already have a cc1, just create an invocation.
+  if (CommandLine.size() >= 2 && CommandLine[1] == "-cc1") {
+    ArrayRef<const char *> CC1Args = makeArrayRef(Argv).drop_front();
+    std::unique_ptr<CompilerInvocation> Invocation(
+        newInvocation(&*Diagnostics, CC1Args, BinaryName));
+    if (Diagnostics->hasErrorOccurred())
+      return false;
+    return Action->runInvocation(std::move(Invocation), Files,
+                                 std::move(PCHContainerOps), DiagConsumer);
+  }
 
   const std::unique_ptr<driver::Driver> Driver(
       newDriver(&*Diagnostics, BinaryName, &Files->getVirtualFileSystem()));
@@ -855,7 +843,7 @@ int ClangTool::proccessFiles(llvm::StringRef File,bool &ProcessingFailed,
             getInsertArgumentAdjuster("-x", ArgumentInsertPosition::BEGIN));
       } else {
         std::string IncludeOptionStr = std::string("-I") + SDKIncludePath;
-        CommandLine.push_back(IncludeOptionStr);
+        CommandLine = getInsertArgumentAdjuster((std::string("-I") + SDKIncludePath).c_str())(CommandLine, "");
       }
 #else
       if (!CommandLine.empty() && CommandLine[0].size() >= 4 &&
@@ -868,7 +856,7 @@ int ClangTool::proccessFiles(llvm::StringRef File,bool &ProcessingFailed,
             getInsertArgumentAdjuster("-x", ArgumentInsertPosition::BEGIN));
       } else {
         std::string IncludeOptionStr = std::string("-I") + SDKIncludePath;
-        CommandLine.push_back(IncludeOptionStr);
+        CommandLine = getInsertArgumentAdjuster((std::string("-I") + SDKIncludePath).c_str())(CommandLine, "");
       }
 #endif
       if (CudaArgsAdjuster)
@@ -906,8 +894,6 @@ int ClangTool::proccessFiles(llvm::StringRef File,bool &ProcessingFailed,
         if(StopOnParseErrTooling)
             break;
       }
-      CollectProcessedFile(getRealFilePath(File.str(), Files.get()));
-
     }
     //collect the errror counter info.
     ErrorCnt[File.str()] =(CurFileSigErrCnt<<32) | CurFileParseErrCnt;
@@ -1186,7 +1172,7 @@ std::unique_ptr<ASTUnit> buildASTFromCodeWithArgs(
 
   if (!Invocation.run())
     return nullptr;
- 
+
   assert(ASTs.size() == 1);
   return std::move(ASTs[0]);
 }

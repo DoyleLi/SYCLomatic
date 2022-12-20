@@ -160,6 +160,7 @@ protected:
   bool IsISA2_07;
   bool IsISA3_0;
   bool IsISA3_1;
+  bool IsISAFuture;
   bool UseLongCalls;
   bool SecurePlt;
   bool VectorsUseTwoUnits;
@@ -167,6 +168,7 @@ protected:
   bool UsePPCPostRASchedStrategy;
   bool PairedVectorMemops;
   bool PredictableSelectIsExpensive;
+  bool HasFastMFLR;
   bool HasModernAIXAs;
   bool IsAIX;
 
@@ -315,6 +317,7 @@ public:
   bool hasPartwordAtomics() const { return HasPartwordAtomics; }
   bool hasQuadwordAtomics() const { return HasQuadwordAtomics; }
   bool hasDirectMove() const { return HasDirectMove; }
+  bool hasFastMFLR() const { return HasFastMFLR; }
 
   Align getPlatformStackAlignment() const {
     return Align(16);
@@ -336,6 +339,7 @@ public:
   bool isISA2_07() const { return IsISA2_07; }
   bool isISA3_0() const { return IsISA3_0; }
   bool isISA3_1() const { return IsISA3_1; }
+  bool isISAFuture() const { return IsISAFuture; }
   bool useLongCalls() const { return UseLongCalls; }
   bool hasFusion() const { return HasFusion; }
   bool hasStoreFusion() const { return HasStoreFusion; }

@@ -369,6 +369,7 @@ public:
       FFTPlanAPINeedParenIdxMap;
 
   static MapTy BLASComputingAPIWithRewriter;
+  static std::unordered_set<std::string> SOLVERAPIWithRewriter;
 
   static const std::unordered_set<std::string> CooperativeGroupsAPISet;
 
@@ -416,7 +417,7 @@ public:
   static const MapNames::MapTy MemberNamesMap;
   static const MapNames::MapTy FunctionAttrMap;
   static const MapNames::SetTy HostAllocSet;
-  static MapNames::MapTy MathRewriterMap;
+  static MapNames::MapTy MathFuncNameMap;
 
   static std::unordered_map<std::string, std::string> AtomicFuncNamesMap;
   static const MapNames::SetTy PredefinedStreamName;

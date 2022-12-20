@@ -29,9 +29,9 @@
 #include "llvm/CodeGen/PreISelIntrinsicLowering.h"
 #include "llvm/CodeGen/ReplaceWithVeclib.h"
 #include "llvm/CodeGen/UnreachableBlockElim.h"
-#include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/IRPrinter/IRPrintingPasses.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Support/CodeGen.h"
@@ -663,6 +663,10 @@ void CodeGenPassBuilder<Derived>::addIRPasses(AddIRPass &addPass) const {
 
   // Expand reduction intrinsics into shuffle sequences if the target wants to.
   addPass(ExpandReductionsPass());
+
+  // Convert conditional moves to conditional jumps when profitable.
+  if (getOptLevel() != CodeGenOpt::None && !Opt.DisableSelectOptimize)
+    addPass(SelectOptimizePass());
 }
 
 /// Turn exception handling constructs into something the code generators can
@@ -681,7 +685,7 @@ void CodeGenPassBuilder<Derived>::addPassesToHandleExceptions(
     // pad is shared by multiple invokes and is also a target of a normal
     // edge from elsewhere.
     addPass(SjLjEHPreparePass());
-    LLVM_FALLTHROUGH;
+    [[fallthrough]];
   case ExceptionHandling::DwarfCFI:
   case ExceptionHandling::ARM:
   case ExceptionHandling::AIX:
@@ -746,7 +750,7 @@ template <typename Derived>
 Error CodeGenPassBuilder<Derived>::addCoreISelPasses(
     AddMachinePass &addPass) const {
   // Enable FastISel with -fast-isel, but allow that to be overridden.
-  TM.setO0WantsFastISel(Opt.EnableFastISelOption.getValueOr(true));
+  TM.setO0WantsFastISel(Opt.EnableFastISelOption.value_or(true));
 
   // Determine an instruction selector.
   enum class SelectorType { SelectionDAG, FastISel, GlobalISel };
@@ -1125,6 +1129,9 @@ void CodeGenPassBuilder<Derived>::addMachineLateOptimization(
   // In addition it can also make CFG irreducible. Thus we disable it.
   if (!TM.requiresStructuredCFG())
     addPass(TailDuplicatePass());
+
+  // Cleanup of redundant (identical) address/immediate loads.
+  addPass(MachineLateInstrsCleanupPass());
 
   // Copy propagation.
   addPass(MachineCopyPropagationPass());

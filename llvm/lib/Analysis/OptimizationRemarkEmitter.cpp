@@ -62,7 +62,7 @@ bool OptimizationRemarkEmitter::invalidate(
 
 Optional<uint64_t> OptimizationRemarkEmitter::computeHotness(const Value *V) {
   if (!BFI)
-    return None;
+    return std::nullopt;
 
   return BFI->getBlockProfileCount(cast<BasicBlock>(V));
 }
@@ -80,7 +80,7 @@ void OptimizationRemarkEmitter::emit(
   computeHotness(OptDiag);
 
   // Only emit it if its hotness meets the threshold.
-  if (OptDiag.getHotness().getValueOr(0) <
+  if (OptDiag.getHotness().value_or(0) <
       F->getContext().getDiagnosticsHotnessThreshold()) {
     return;
   }

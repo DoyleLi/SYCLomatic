@@ -21,11 +21,7 @@ if (NOT DEFINED LEVEL_ZERO_LIBRARY OR NOT DEFINED LEVEL_ZERO_INCLUDE_DIR)
   if (NOT DEFINED SYCL_EP_LEVEL_ZERO_LOADER_SKIP_AUTO_UPDATE)
     set(SYCL_EP_LEVEL_ZERO_LOADER_SKIP_AUTO_UPDATE ${SYCL_EXTERNAL_PROJECTS_SKIP_AUTO_UPDATE})
   endif()
-  if (WIN32)
-    set(LEVEL_ZERO_LOADER_SOURCE_VERSION v1.2.3)
-  else()
-    set(LEVEL_ZERO_LOADER_SOURCE_VERSION v1.4.1)
-  endif()
+  set(LEVEL_ZERO_LOADER_SOURCE_VERSION v1.8.8)
 
   #TODO: Replace ExternalProject with FetchContent for better maintainance and
   #      cmake files simplification
@@ -99,20 +95,49 @@ target_include_directories(LevelZeroLoader-Headers
   INTERFACE "${LEVEL_ZERO_INCLUDE_DIR}"
 )
 
+if (SYCL_ENABLE_XPTI_TRACING)
+  set(XPTI_PROXY_SRC "${CMAKE_SOURCE_DIR}/../xpti/src/xpti_proxy.cpp")
+endif()
+
 find_package(Threads REQUIRED)
+
 add_sycl_plugin(level_zero
   SOURCES
-    "${sycl_inc_dir}/CL/sycl/detail/pi.h"
+    "${sycl_inc_dir}/sycl/detail/pi.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/pi_level_zero.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/pi_level_zero.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/usm_allocator.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/usm_allocator.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tracing.cpp"
+    ${XPTI_PROXY_SRC}
   LIBRARIES
     "${LEVEL_ZERO_LOADER}"
     Threads::Threads
+    unified_runtime
 )
 
-if (TARGET level-zero-loader)
-  add_dependencies(pi_level_zero level-zero-loader)
+find_package(Python3 REQUIRED)
+
+add_custom_target(ze-api
+  COMMAND ${Python3_EXECUTABLE}
+  ${CMAKE_CURRENT_SOURCE_DIR}/ze_api_generator.py
+  ${LEVEL_ZERO_INCLUDE_DIR}/level_zero/ze_api.h
+  BYPRODUCTS
+    ${CMAKE_CURRENT_BINARY_DIR}/ze_api.def
+  )
+target_include_directories(pi_level_zero PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+add_dependencies(pi_level_zero ze-api)
+
+if (SYCL_ENABLE_XPTI_TRACING)
+  target_compile_definitions(pi_level_zero PRIVATE
+    XPTI_ENABLE_INSTRUMENTATION
+    XPTI_STATIC_LIBRARY
+  )
+  target_include_directories(pi_level_zero PRIVATE "${CMAKE_SOURCE_DIR}/../xpti/include")
+  target_link_libraries(pi_level_zero PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
+if (TARGET level-zero-loader)
+  add_dependencies(ze-api level-zero-loader)
+  add_dependencies(pi_level_zero level-zero-loader)
+endif()

@@ -22,13 +22,13 @@ define void @uaddsat(i16* nocapture readonly %pSrc, i16 signext %offset, i16* no
 ; CHECK-NEXT:    [[TMP0:%.*]] = add i32 [[BLOCKSIZE]], -1
 ; CHECK-NEXT:    [[TMP1:%.*]] = zext i32 [[TMP0]] to i64
 ; CHECK-NEXT:    [[TMP2:%.*]] = add nuw nsw i64 [[TMP1]], 1
-; CHECK-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i32 [[TMP0]], 7
+; CHECK-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i32 [[BLOCKSIZE]], 8
 ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[VEC_EPILOG_SCALAR_PH:%.*]], label [[VECTOR_MAIN_LOOP_ITER_CHECK:%.*]]
 ; CHECK:       vector.main.loop.iter.check:
-; CHECK-NEXT:    [[MIN_ITERS_CHECK1:%.*]] = icmp ult i32 [[TMP0]], 63
+; CHECK-NEXT:    [[MIN_ITERS_CHECK1:%.*]] = icmp ult i32 [[BLOCKSIZE]], 64
 ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK1]], label [[VEC_EPILOG_PH:%.*]], label [[VECTOR_PH:%.*]]
 ; CHECK:       vector.ph:
-; CHECK-NEXT:    [[N_VEC:%.*]] = and i64 [[TMP2]], 8589934528
+; CHECK-NEXT:    [[N_VEC:%.*]] = and i64 [[TMP2]], -64
 ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <16 x i16> poison, i16 [[OFFSET:%.*]], i64 0
 ; CHECK-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <16 x i16> [[BROADCAST_SPLATINSERT]], <16 x i16> poison, <16 x i32> zeroinitializer
 ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT12:%.*]] = insertelement <16 x i16> poison, i16 [[OFFSET]], i64 0
@@ -75,20 +75,20 @@ define void @uaddsat(i16* nocapture readonly %pSrc, i16 signext %offset, i16* no
 ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[TMP2]], [[N_VEC]]
 ; CHECK-NEXT:    br i1 [[CMP_N]], label [[WHILE_END]], label [[VEC_EPILOG_ITER_CHECK:%.*]]
 ; CHECK:       vec.epilog.iter.check:
-; CHECK-NEXT:    [[IND_END27:%.*]] = getelementptr i16, i16* [[PDST]], i64 [[N_VEC]]
-; CHECK-NEXT:    [[IND_END24:%.*]] = getelementptr i16, i16* [[PSRC]], i64 [[N_VEC]]
-; CHECK-NEXT:    [[CAST_CRD20:%.*]] = trunc i64 [[N_VEC]] to i32
-; CHECK-NEXT:    [[IND_END21:%.*]] = sub i32 [[BLOCKSIZE]], [[CAST_CRD20]]
+; CHECK-NEXT:    [[IND_END26:%.*]] = getelementptr i16, i16* [[PDST]], i64 [[N_VEC]]
+; CHECK-NEXT:    [[IND_END23:%.*]] = getelementptr i16, i16* [[PSRC]], i64 [[N_VEC]]
+; CHECK-NEXT:    [[CAST_VTC20:%.*]] = trunc i64 [[N_VEC]] to i32
+; CHECK-NEXT:    [[IND_END21:%.*]] = sub i32 [[BLOCKSIZE]], [[CAST_VTC20]]
 ; CHECK-NEXT:    [[N_VEC_REMAINING:%.*]] = and i64 [[TMP2]], 56
 ; CHECK-NEXT:    [[MIN_EPILOG_ITERS_CHECK:%.*]] = icmp eq i64 [[N_VEC_REMAINING]], 0
 ; CHECK-NEXT:    br i1 [[MIN_EPILOG_ITERS_CHECK]], label [[VEC_EPILOG_SCALAR_PH]], label [[VEC_EPILOG_PH]]
 ; CHECK:       vec.epilog.ph:
 ; CHECK-NEXT:    [[VEC_EPILOG_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], [[VEC_EPILOG_ITER_CHECK]] ], [ 0, [[VECTOR_MAIN_LOOP_ITER_CHECK]] ]
-; CHECK-NEXT:    [[N_VEC19:%.*]] = and i64 [[TMP2]], 8589934584
-; CHECK-NEXT:    [[CAST_CRD:%.*]] = trunc i64 [[N_VEC19]] to i32
-; CHECK-NEXT:    [[IND_END:%.*]] = sub i32 [[BLOCKSIZE]], [[CAST_CRD]]
-; CHECK-NEXT:    [[IND_END23:%.*]] = getelementptr i16, i16* [[PSRC]], i64 [[N_VEC19]]
-; CHECK-NEXT:    [[IND_END26:%.*]] = getelementptr i16, i16* [[PDST]], i64 [[N_VEC19]]
+; CHECK-NEXT:    [[N_VEC19:%.*]] = and i64 [[TMP2]], -8
+; CHECK-NEXT:    [[CAST_VTC:%.*]] = trunc i64 [[N_VEC19]] to i32
+; CHECK-NEXT:    [[IND_END:%.*]] = sub i32 [[BLOCKSIZE]], [[CAST_VTC]]
+; CHECK-NEXT:    [[IND_END22:%.*]] = getelementptr i16, i16* [[PSRC]], i64 [[N_VEC19]]
+; CHECK-NEXT:    [[IND_END25:%.*]] = getelementptr i16, i16* [[PDST]], i64 [[N_VEC19]]
 ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT33:%.*]] = insertelement <8 x i16> poison, i16 [[OFFSET]], i64 0
 ; CHECK-NEXT:    [[BROADCAST_SPLAT34:%.*]] = shufflevector <8 x i16> [[BROADCAST_SPLATINSERT33]], <8 x i16> poison, <8 x i32> zeroinitializer
 ; CHECK-NEXT:    br label [[VEC_EPILOG_VECTOR_BODY:%.*]]
@@ -109,13 +109,13 @@ define void @uaddsat(i16* nocapture readonly %pSrc, i16 signext %offset, i16* no
 ; CHECK-NEXT:    br i1 [[CMP_N28]], label [[WHILE_END]], label [[VEC_EPILOG_SCALAR_PH]]
 ; CHECK:       vec.epilog.scalar.ph:
 ; CHECK-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i32 [ [[IND_END]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END21]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[BLOCKSIZE]], [[ITER_CHECK]] ]
-; CHECK-NEXT:    [[BC_RESUME_VAL22:%.*]] = phi i16* [ [[IND_END23]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END24]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[PSRC]], [[ITER_CHECK]] ]
-; CHECK-NEXT:    [[BC_RESUME_VAL25:%.*]] = phi i16* [ [[IND_END26]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END27]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[PDST]], [[ITER_CHECK]] ]
+; CHECK-NEXT:    [[BC_RESUME_VAL24:%.*]] = phi i16* [ [[IND_END22]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END23]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[PSRC]], [[ITER_CHECK]] ]
+; CHECK-NEXT:    [[BC_RESUME_VAL27:%.*]] = phi i16* [ [[IND_END25]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END26]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[PDST]], [[ITER_CHECK]] ]
 ; CHECK-NEXT:    br label [[WHILE_BODY:%.*]]
 ; CHECK:       while.body:
 ; CHECK-NEXT:    [[BLKCNT_09:%.*]] = phi i32 [ [[DEC:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL]], [[VEC_EPILOG_SCALAR_PH]] ]
-; CHECK-NEXT:    [[PSRC_ADDR_08:%.*]] = phi i16* [ [[INCDEC_PTR:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL22]], [[VEC_EPILOG_SCALAR_PH]] ]
-; CHECK-NEXT:    [[PDST_ADDR_07:%.*]] = phi i16* [ [[INCDEC_PTR3:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL25]], [[VEC_EPILOG_SCALAR_PH]] ]
+; CHECK-NEXT:    [[PSRC_ADDR_08:%.*]] = phi i16* [ [[INCDEC_PTR:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL24]], [[VEC_EPILOG_SCALAR_PH]] ]
+; CHECK-NEXT:    [[PDST_ADDR_07:%.*]] = phi i16* [ [[INCDEC_PTR3:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL27]], [[VEC_EPILOG_SCALAR_PH]] ]
 ; CHECK-NEXT:    [[INCDEC_PTR]] = getelementptr inbounds i16, i16* [[PSRC_ADDR_08]], i64 1
 ; CHECK-NEXT:    [[TMP26:%.*]] = load i16, i16* [[PSRC_ADDR_08]], align 2
 ; CHECK-NEXT:    [[TMP27:%.*]] = tail call i16 @llvm.uadd.sat.i16(i16 [[TMP26]], i16 [[OFFSET]])
@@ -148,16 +148,16 @@ while.end:                                        ; preds = %while.body, %entry
   ret void
 }
 
-; CHECK-COST-LABEL: cttz
-; CHECK-COST: Found an estimated cost of 1 for VF 1 For instruction:   %1 = tail call i8 @llvm.fshl.i8(i8 %0, i8 %0, i8 %offset)
+; CHECK-COST-LABEL: fshl
+; CHECK-COST: Found an estimated cost of 2 for VF 1 For instruction:   %1 = tail call i8 @llvm.fshl.i8(i8 %0, i8 %0, i8 %offset)
 ; CHECK-COST: Found an estimated cost of 1 for VF 2 For instruction:   %1 = tail call i8 @llvm.fshl.i8(i8 %0, i8 %0, i8 %offset)
 ; CHECK-COST: Found an estimated cost of 1 for VF 4 For instruction:   %1 = tail call i8 @llvm.fshl.i8(i8 %0, i8 %0, i8 %offset)
 ; CHECK-COST: Found an estimated cost of 1 for VF 8 For instruction:   %1 = tail call i8 @llvm.fshl.i8(i8 %0, i8 %0, i8 %offset)
 ; CHECK-COST: Found an estimated cost of 1 for VF 16 For instruction:   %1 = tail call i8 @llvm.fshl.i8(i8 %0, i8 %0, i8 %offset)
 ; CHECK-COST: Found an estimated cost of 4 for VF 32 For instruction:   %1 = tail call i8 @llvm.fshl.i8(i8 %0, i8 %0, i8 %offset)
 
-define void @cttz(i8* nocapture readonly %pSrc, i8 signext %offset, i8* nocapture noalias %pDst, i32 %blockSize) #0 {
-; CHECK-LABEL: @cttz(
+define void @fshl(i8* nocapture readonly %pSrc, i8 signext %offset, i8* nocapture noalias %pDst, i32 %blockSize) #0 {
+; CHECK-LABEL: @fshl(
 ; CHECK-NEXT:  entry:
 ; CHECK-NEXT:    [[CMP_NOT6:%.*]] = icmp eq i32 [[BLOCKSIZE:%.*]], 0
 ; CHECK-NEXT:    br i1 [[CMP_NOT6]], label [[WHILE_END:%.*]], label [[ITER_CHECK:%.*]]
@@ -165,13 +165,13 @@ define void @cttz(i8* nocapture readonly %pSrc, i8 signext %offset, i8* nocaptur
 ; CHECK-NEXT:    [[TMP0:%.*]] = add i32 [[BLOCKSIZE]], -1
 ; CHECK-NEXT:    [[TMP1:%.*]] = zext i32 [[TMP0]] to i64
 ; CHECK-NEXT:    [[TMP2:%.*]] = add nuw nsw i64 [[TMP1]], 1
-; CHECK-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i32 [[TMP0]], 15
+; CHECK-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i32 [[BLOCKSIZE]], 16
 ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[VEC_EPILOG_SCALAR_PH:%.*]], label [[VECTOR_MAIN_LOOP_ITER_CHECK:%.*]]
 ; CHECK:       vector.main.loop.iter.check:
-; CHECK-NEXT:    [[MIN_ITERS_CHECK1:%.*]] = icmp ult i32 [[TMP0]], 127
+; CHECK-NEXT:    [[MIN_ITERS_CHECK1:%.*]] = icmp ult i32 [[BLOCKSIZE]], 128
 ; CHECK-NEXT:    br i1 [[MIN_ITERS_CHECK1]], label [[VEC_EPILOG_PH:%.*]], label [[VECTOR_PH:%.*]]
 ; CHECK:       vector.ph:
-; CHECK-NEXT:    [[N_VEC:%.*]] = and i64 [[TMP2]], 8589934464
+; CHECK-NEXT:    [[N_VEC:%.*]] = and i64 [[TMP2]], -128
 ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <32 x i8> poison, i8 [[OFFSET:%.*]], i64 0
 ; CHECK-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <32 x i8> [[BROADCAST_SPLATINSERT]], <32 x i8> poison, <32 x i32> zeroinitializer
 ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT12:%.*]] = insertelement <32 x i8> poison, i8 [[OFFSET]], i64 0
@@ -218,20 +218,20 @@ define void @cttz(i8* nocapture readonly %pSrc, i8 signext %offset, i8* nocaptur
 ; CHECK-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[TMP2]], [[N_VEC]]
 ; CHECK-NEXT:    br i1 [[CMP_N]], label [[WHILE_END]], label [[VEC_EPILOG_ITER_CHECK:%.*]]
 ; CHECK:       vec.epilog.iter.check:
-; CHECK-NEXT:    [[IND_END27:%.*]] = getelementptr i8, i8* [[PDST]], i64 [[N_VEC]]
-; CHECK-NEXT:    [[IND_END24:%.*]] = getelementptr i8, i8* [[PSRC]], i64 [[N_VEC]]
-; CHECK-NEXT:    [[CAST_CRD20:%.*]] = trunc i64 [[N_VEC]] to i32
-; CHECK-NEXT:    [[IND_END21:%.*]] = sub i32 [[BLOCKSIZE]], [[CAST_CRD20]]
+; CHECK-NEXT:    [[IND_END26:%.*]] = getelementptr i8, i8* [[PDST]], i64 [[N_VEC]]
+; CHECK-NEXT:    [[IND_END23:%.*]] = getelementptr i8, i8* [[PSRC]], i64 [[N_VEC]]
+; CHECK-NEXT:    [[CAST_VTC20:%.*]] = trunc i64 [[N_VEC]] to i32
+; CHECK-NEXT:    [[IND_END21:%.*]] = sub i32 [[BLOCKSIZE]], [[CAST_VTC20]]
 ; CHECK-NEXT:    [[N_VEC_REMAINING:%.*]] = and i64 [[TMP2]], 112
 ; CHECK-NEXT:    [[MIN_EPILOG_ITERS_CHECK:%.*]] = icmp eq i64 [[N_VEC_REMAINING]], 0
 ; CHECK-NEXT:    br i1 [[MIN_EPILOG_ITERS_CHECK]], label [[VEC_EPILOG_SCALAR_PH]], label [[VEC_EPILOG_PH]]
 ; CHECK:       vec.epilog.ph:
 ; CHECK-NEXT:    [[VEC_EPILOG_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], [[VEC_EPILOG_ITER_CHECK]] ], [ 0, [[VECTOR_MAIN_LOOP_ITER_CHECK]] ]
-; CHECK-NEXT:    [[N_VEC19:%.*]] = and i64 [[TMP2]], 8589934576
-; CHECK-NEXT:    [[CAST_CRD:%.*]] = trunc i64 [[N_VEC19]] to i32
-; CHECK-NEXT:    [[IND_END:%.*]] = sub i32 [[BLOCKSIZE]], [[CAST_CRD]]
-; CHECK-NEXT:    [[IND_END23:%.*]] = getelementptr i8, i8* [[PSRC]], i64 [[N_VEC19]]
-; CHECK-NEXT:    [[IND_END26:%.*]] = getelementptr i8, i8* [[PDST]], i64 [[N_VEC19]]
+; CHECK-NEXT:    [[N_VEC19:%.*]] = and i64 [[TMP2]], -16
+; CHECK-NEXT:    [[CAST_VTC:%.*]] = trunc i64 [[N_VEC19]] to i32
+; CHECK-NEXT:    [[IND_END:%.*]] = sub i32 [[BLOCKSIZE]], [[CAST_VTC]]
+; CHECK-NEXT:    [[IND_END22:%.*]] = getelementptr i8, i8* [[PSRC]], i64 [[N_VEC19]]
+; CHECK-NEXT:    [[IND_END25:%.*]] = getelementptr i8, i8* [[PDST]], i64 [[N_VEC19]]
 ; CHECK-NEXT:    [[BROADCAST_SPLATINSERT33:%.*]] = insertelement <16 x i8> poison, i8 [[OFFSET]], i64 0
 ; CHECK-NEXT:    [[BROADCAST_SPLAT34:%.*]] = shufflevector <16 x i8> [[BROADCAST_SPLATINSERT33]], <16 x i8> poison, <16 x i32> zeroinitializer
 ; CHECK-NEXT:    br label [[VEC_EPILOG_VECTOR_BODY:%.*]]
@@ -252,13 +252,13 @@ define void @cttz(i8* nocapture readonly %pSrc, i8 signext %offset, i8* nocaptur
 ; CHECK-NEXT:    br i1 [[CMP_N28]], label [[WHILE_END]], label [[VEC_EPILOG_SCALAR_PH]]
 ; CHECK:       vec.epilog.scalar.ph:
 ; CHECK-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i32 [ [[IND_END]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END21]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[BLOCKSIZE]], [[ITER_CHECK]] ]
-; CHECK-NEXT:    [[BC_RESUME_VAL22:%.*]] = phi i8* [ [[IND_END23]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END24]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[PSRC]], [[ITER_CHECK]] ]
-; CHECK-NEXT:    [[BC_RESUME_VAL25:%.*]] = phi i8* [ [[IND_END26]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END27]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[PDST]], [[ITER_CHECK]] ]
+; CHECK-NEXT:    [[BC_RESUME_VAL24:%.*]] = phi i8* [ [[IND_END22]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END23]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[PSRC]], [[ITER_CHECK]] ]
+; CHECK-NEXT:    [[BC_RESUME_VAL27:%.*]] = phi i8* [ [[IND_END25]], [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ [[IND_END26]], [[VEC_EPILOG_ITER_CHECK]] ], [ [[PDST]], [[ITER_CHECK]] ]
 ; CHECK-NEXT:    br label [[WHILE_BODY:%.*]]
 ; CHECK:       while.body:
 ; CHECK-NEXT:    [[BLKCNT_09:%.*]] = phi i32 [ [[DEC:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL]], [[VEC_EPILOG_SCALAR_PH]] ]
-; CHECK-NEXT:    [[PSRC_ADDR_08:%.*]] = phi i8* [ [[INCDEC_PTR:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL22]], [[VEC_EPILOG_SCALAR_PH]] ]
-; CHECK-NEXT:    [[PDST_ADDR_07:%.*]] = phi i8* [ [[INCDEC_PTR3:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL25]], [[VEC_EPILOG_SCALAR_PH]] ]
+; CHECK-NEXT:    [[PSRC_ADDR_08:%.*]] = phi i8* [ [[INCDEC_PTR:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL24]], [[VEC_EPILOG_SCALAR_PH]] ]
+; CHECK-NEXT:    [[PDST_ADDR_07:%.*]] = phi i8* [ [[INCDEC_PTR3:%.*]], [[WHILE_BODY]] ], [ [[BC_RESUME_VAL27]], [[VEC_EPILOG_SCALAR_PH]] ]
 ; CHECK-NEXT:    [[INCDEC_PTR]] = getelementptr inbounds i8, i8* [[PSRC_ADDR_08]], i64 1
 ; CHECK-NEXT:    [[TMP26:%.*]] = load i8, i8* [[PSRC_ADDR_08]], align 2
 ; CHECK-NEXT:    [[TMP27:%.*]] = tail call i8 @llvm.fshl.i8(i8 [[TMP26]], i8 [[TMP26]], i8 [[OFFSET]])

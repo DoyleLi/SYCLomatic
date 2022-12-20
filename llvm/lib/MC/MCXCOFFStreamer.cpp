@@ -37,6 +37,10 @@ bool MCXCOFFStreamer::emitSymbolAttribute(MCSymbol *Sym,
   getAssembler().registerSymbol(*Symbol);
 
   switch (Attribute) {
+  // XCOFF doesn't support the cold feature.
+  case MCSA_Cold:
+    return false;
+
   case MCSA_Global:
   case MCSA_Extern:
     Symbol->setStorageClass(XCOFF::C_EXT);
@@ -56,6 +60,9 @@ bool MCXCOFFStreamer::emitSymbolAttribute(MCSymbol *Sym,
   case llvm::MCSA_Protected:
     Symbol->setVisibilityType(XCOFF::SYM_V_PROTECTED);
     break;
+  case llvm::MCSA_Exported:
+    Symbol->setVisibilityType(XCOFF::SYM_V_EXPORTED);
+    break;
   default:
     report_fatal_error("Not implemented yet.");
   }
@@ -74,6 +81,15 @@ void MCXCOFFStreamer::emitXCOFFSymbolLinkageWithVisibility(
   emitSymbolAttribute(Symbol, Visibility);
 }
 
+void MCXCOFFStreamer::emitXCOFFExceptDirective(const MCSymbol *Symbol,
+                                               const MCSymbol *Trap,
+                                               unsigned Lang, unsigned Reason,
+                                               unsigned FunctionSize,
+                                               bool hasDebug) {
+  getAssembler().getWriter().addExceptionEntry(Symbol, Trap, Lang, Reason,
+                                               FunctionSize, hasDebug);
+}
+
 void MCXCOFFStreamer::emitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                        unsigned ByteAlignment) {
   getAssembler().registerSymbol(*Symbol);
@@ -87,7 +103,7 @@ void MCXCOFFStreamer::emitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
       Align(ByteAlignment));
 
   // Emit the alignment and storage for the variable to the section.
-  emitValueToAlignment(ByteAlignment);
+  emitValueToAlignment(Align(ByteAlignment));
   emitZeros(Size);
 }
 
@@ -133,6 +149,6 @@ MCStreamer *llvm::createXCOFFStreamer(MCContext &Context,
 void MCXCOFFStreamer::emitXCOFFLocalCommonSymbol(MCSymbol *LabelSym,
                                                  uint64_t Size,
                                                  MCSymbol *CsectSym,
-                                                 unsigned ByteAlignment) {
-  emitCommonSymbol(CsectSym, Size, ByteAlignment);
+                                                 Align Alignment) {
+  emitCommonSymbol(CsectSym, Size, Alignment.value());
 }

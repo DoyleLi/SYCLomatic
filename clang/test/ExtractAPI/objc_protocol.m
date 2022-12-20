@@ -1,7 +1,7 @@
 // RUN: rm -rf %t
 // RUN: split-file %s %t
-// RUN: sed -e "s@INPUT_DIR@%/t@g" %t/reference.output.json.in >> \
-// RUN: %t/reference.output.json
+// RUN: sed -e "s@INPUT_DIR@%{/t:regex_replacement}@g" \
+// RUN: %t/reference.output.json.in >> %t/reference.output.json
 // RUN: %clang -extract-api -x objective-c-header -target arm64-apple-macosx \
 // RUN: %t/input.h -o %t/output.json | FileCheck -allow-empty %s
 
@@ -45,15 +45,17 @@
       "vendor": "apple"
     }
   },
-  "relationhips": [
+  "relationships": [
     {
       "kind": "conformsTo",
       "source": "c:objc(pl)AnotherProtocol",
-      "target": "c:objc(pl)Protocol"
+      "target": "c:objc(pl)Protocol",
+      "targetFallback": "Protocol"
     }
   ],
   "symbols": [
     {
+      "accessLevel": "public",
       "declarationFragments": [
         {
           "kind": "keyword",
@@ -77,11 +79,19 @@
         "identifier": "objective-c.protocol"
       },
       "location": {
-        "character": 11,
-        "line": 1,
+        "position": {
+          "character": 11,
+          "line": 1
+        },
         "uri": "file://INPUT_DIR/input.h"
       },
       "names": {
+        "navigator": [
+          {
+            "kind": "identifier",
+            "spelling": "Protocol"
+          }
+        ],
         "subHeading": [
           {
             "kind": "identifier",
@@ -89,9 +99,13 @@
           }
         ],
         "title": "Protocol"
-      }
+      },
+      "pathComponents": [
+        "Protocol"
+      ]
     },
     {
+      "accessLevel": "public",
       "declarationFragments": [
         {
           "kind": "keyword",
@@ -128,11 +142,19 @@
         "identifier": "objective-c.protocol"
       },
       "location": {
-        "character": 11,
-        "line": 4,
+        "position": {
+          "character": 11,
+          "line": 4
+        },
         "uri": "file://INPUT_DIR/input.h"
       },
       "names": {
+        "navigator": [
+          {
+            "kind": "identifier",
+            "spelling": "AnotherProtocol"
+          }
+        ],
         "subHeading": [
           {
             "kind": "identifier",
@@ -140,7 +162,10 @@
           }
         ],
         "title": "AnotherProtocol"
-      }
+      },
+      "pathComponents": [
+        "AnotherProtocol"
+      ]
     }
   ]
 }

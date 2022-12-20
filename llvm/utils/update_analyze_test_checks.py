@@ -67,7 +67,7 @@ def main():
     prefix_list = []
     for l in ti.run_lines:
       if '|' not in l:
-        common.warn('Skipping unparseable RUN line: ' + l)
+        common.warn('Skipping unparsable RUN line: ' + l)
         continue
 
       (tool_cmd, filecheck_cmd) = tuple([cmd.strip() for cmd in l.split('|', 1)])
@@ -110,10 +110,21 @@ def main():
 
       raw_tool_outputs = common.invoke_tool(ti.args.opt_binary, opt_args, ti.path)
 
-      # Split analysis outputs by "Printing analysis " declarations.
-      for raw_tool_output in re.split(r'Printing analysis ', raw_tool_outputs):
-        builder.process_run_line(common.ANALYZE_FUNCTION_RE, common.scrub_body,
-                                 raw_tool_output, prefixes, False)
+      if re.search(r'Printing analysis ', raw_tool_outputs) is not None:
+        # Split analysis outputs by "Printing analysis " declarations.
+        for raw_tool_output in re.split(r'Printing analysis ', raw_tool_outputs):
+          builder.process_run_line(common.ANALYZE_FUNCTION_RE, common.scrub_body,
+                                  raw_tool_output, prefixes, False)
+      elif re.search(r'LV: Checking a loop in ', raw_tool_outputs) is not None:
+        # Split analysis outputs by "Printing analysis " declarations.
+        for raw_tool_output in re.split(r'LV: Checking a loop in ', raw_tool_outputs):
+          builder.process_run_line(common.LV_DEBUG_RE, common.scrub_body,
+                                  raw_tool_output, prefixes, False)
+      else:
+        common.warn('Don\'t know how to deal with this output')
+        continue
+
+      builder.processed_prefixes(prefixes)
 
     func_dict = builder.finish_and_get_func_dict()
     is_in_function = False
@@ -122,6 +133,7 @@ def main():
     common.debug('Rewriting FileCheck prefixes:', str(prefix_set), file=sys.stderr)
     output_lines = []
 
+    generated_prefixes = []
     for input_info in ti.iterlines(output_lines):
       input_line = input_info.line
       args = input_info.args
@@ -135,8 +147,14 @@ def main():
             continue
 
         # Print out the various check lines here.
-        common.add_analyze_checks(output_lines, ';', prefix_list, func_dict, func_name,
-                                  is_filtered=builder.is_filtered())
+        generated_prefixes.extend(
+            common.add_analyze_checks(
+                output_lines,
+                ';',
+                prefix_list,
+                func_dict,
+                func_name,
+                is_filtered=builder.is_filtered()))
         is_in_function_start = False
 
       if is_in_function:
@@ -162,6 +180,10 @@ def main():
         # When filtering on a specific function, skip all others.
         continue
       is_in_function = is_in_function_start = True
+
+    if ti.args.gen_unused_prefix_body:
+      output_lines.extend(
+          ti.get_checks_for_unused_prefixes(prefix_list, generated_prefixes))
 
     common.debug('Writing %d lines to %s...' % (len(output_lines), ti.path))
 

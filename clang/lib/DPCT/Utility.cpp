@@ -1086,7 +1086,7 @@ bool isConditionOfFlowControl(const clang::CallExpr *CE,
   for (auto CondtionNode : CondtionNodes) {
     if (CondtionNode == nullptr)
       continue;
-    for (auto Node : AncestorNodes) {
+    for (const auto &Node : AncestorNodes) {
       if (Node.get<Stmt>() && Node.get<Stmt>() == CondtionNode) {
         // if the expression in else if, we can only use lambda
         auto P = getParentStmt(AncestorNodes[AncestorNodes.size() - 1]);
@@ -1196,7 +1196,7 @@ bool isConditionOfFlowControl(const clang::Expr *E,
   for (auto CondtionNode : CondtionNodes) {
     if (CondtionNode == nullptr)
       continue;
-    for (auto Node : AncestorNodes) {
+    for (const auto &Node : AncestorNodes) {
       if (Node.get<Stmt>() && Node.get<Stmt>() == CondtionNode)
         return true;
     }
@@ -1345,7 +1345,7 @@ calculateRangesWithFlag(const clang::tooling::Replacements &Repls,
   std::vector<clang::tooling::Range> Ranges;
 
   int Diff = 0;
-  for (auto R : Repls) {
+  for (const auto &R : Repls) {
     Ranges.emplace_back(/*offset*/ R.getOffset() + Diff,
                         /*length*/ R.getReplacementText().size());
     Diff = Diff + R.getReplacementText().size() - R.getLength();
@@ -1366,7 +1366,7 @@ calculateRangesWithFlag(const clang::tooling::Replacements &Repls,
 std::vector<clang::tooling::Range>
 calculateRangesWithFormatFlag(const clang::tooling::Replacements &Repls) {
   std::vector<bool> FormatFlags;
-  for (auto R : Repls) {
+  for (const auto &R : Repls) {
     if (R.getNotFormatFlag())
       FormatFlags.push_back(false);
     else
@@ -1382,7 +1382,7 @@ std::vector<clang::tooling::Range> calculateRangesWithBlockLevelFormatFlag(
     const clang::tooling::Replacements &Repls) {
   std::vector<bool> BlockLevelFormatFlags;
 
-  for (auto R : Repls) {
+  for (const auto &R : Repls) {
     if (R.getBlockLevelFormatFlag())
       BlockLevelFormatFlags.push_back(true);
     else
@@ -1401,7 +1401,7 @@ std::vector<clang::tooling::Range>
 calculateUpdatedRanges(const clang::tooling::Replacements &Repls,
                        const std::vector<clang::tooling::Range> &Ranges) {
   std::vector<clang::tooling::Range> Result;
-  for (auto R : Ranges) {
+  for (const auto &R : Ranges) {
     unsigned int BOffset = Repls.getShiftedCodePosition(R.getOffset());
     unsigned int EOffset =
         Repls.getShiftedCodePosition(R.getOffset() + R.getLength());
@@ -1429,12 +1429,33 @@ bool isAssigned(const Stmt *S) {
 /// \return A temporary variable name
 
 std::string getTempNameForExpr(const Expr *E, bool HandleLiteral,
-                               bool KeepLastUnderline, bool IsInMacroDefine) {
+                               bool KeepLastUnderline, bool IsInMacroDefine,
+                               SourceLocation CallBegin, SourceLocation CallEnd) {
   SourceManager &SM = dpct::DpctGlobalInfo::getSourceManager();
   E = E->IgnoreCasts();
-  dpct::ArgumentAnalysis EA(E, IsInMacroDefine);
-  auto TokenBegin = EA.getExprBeginSrcLoc();
-  auto ExprEndLoc = EA.getExprEndSrcLoc();
+  bool RangeInCall = false;
+  SourceLocation TokenBegin;
+  SourceLocation ExprEndLoc;
+  if (CallBegin.isValid() && CallEnd.isValid()) {
+    auto Range = getRangeInRange(E, CallBegin, CallEnd);
+    auto DLBegin = SM.getDecomposedLoc(Range.first);
+    auto DLEnd = SM.getDecomposedLoc(Range.second);
+    if (DLBegin.first == DLEnd.first &&
+        DLBegin.second <= DLEnd.second) {
+      TokenBegin = Range.first;
+      ExprEndLoc = Range.second;
+      RangeInCall = true;
+    }
+  }
+  // Fallback to Range while CallBegin/End is not valid or getRangeInRange dose
+  // not return a valid range
+  if (!RangeInCall) {
+    auto Range =
+        getTheLastCompleteImmediateRange(E->getBeginLoc(), E->getEndLoc());
+    TokenBegin = Range.first;
+    ExprEndLoc = Range.second;
+  }
+
   std::string IdString;
   llvm::raw_string_ostream OS(IdString);
   Token Tok;
@@ -1676,19 +1697,19 @@ bool isExprStraddle(const Stmt *S) {
 // Check if an Expr contains macro
 bool isContainMacro(const Expr *E) {
   auto &SM = dpct::DpctGlobalInfo::getSourceManager();
-  auto &Set = dpct::DpctGlobalInfo::getExpansionRangeBeginSet();
+  auto &Map = dpct::DpctGlobalInfo::getExpansionRangeBeginMap();
   SourceLocation ExprBegin = getStmtExpansionSourceRange(E).getBegin();
   SourceLocation ExprEnd = getStmtExpansionSourceRange(E).getEnd();
 
   SourceLocation Loc = ExprBegin;
   while (Loc <= ExprEnd) {
-    if (Set.find(getCombinedStrFromLoc(Loc)) != Set.end()) {
+    if (Map.find(getCombinedStrFromLoc(Loc)) != Map.end()) {
       return true;
     }
     auto Tok = Lexer::findNextToken(
         Loc, SM, dpct::DpctGlobalInfo::getContext().getLangOpts());
-    if (Tok.hasValue())
-      Loc = Tok.getValue().getLocation();
+    if (Tok.has_value())
+      Loc = Tok.value().getLocation();
     else
       return false;
   }
@@ -1715,7 +1736,7 @@ const CXXRecordDecl *getParentRecordDecl(const ValueDecl *DD) {
   return nullptr;
 }
 
-/// Get sibling Decls for a VarDecl or a FieldDecl
+/// Get All Decls for a VarDecl or a FieldDecl
 /// E.g for a VarDecl:
 /// |-DeclStmt
 ///   |-VarDecl
@@ -1724,24 +1745,22 @@ const CXXRecordDecl *getParentRecordDecl(const ValueDecl *DD) {
 /// |-CXXRecordDecl
 ///   |-FieldDecl
 ///   |-FieldDecl
-std::vector<const DeclaratorDecl *> getSiblingDecls(const DeclaratorDecl *DD) {
+std::vector<const DeclaratorDecl *> getAllDecls(const DeclaratorDecl *DD) {
   std::vector<const DeclaratorDecl *> Decls;
-  // For VarDecl, sibling VarDecls share the same parent DeclStmt with it
+  // For VarDecl, All VarDecls share the same parent DeclStmt with it
   if (auto P = getParentStmt(DD)) {
     if (auto DS = dyn_cast<DeclStmt>(P)) {
       for (auto It = DS->decl_begin(); It != DS->decl_end(); ++It) {
         if (auto DD2 = dyn_cast<DeclaratorDecl>(*It))
-          if (DD2 != DD)
             Decls.push_back(DD2);
       }
     }
   }
-  // For FieldDecl, sibling FieldDecls share the same BeginLoc with it
+  // For FieldDecl, All FieldDecls share the same BeginLoc with it
   else if (auto P = getParentRecordDecl(DD)) {
     for (auto It = P->decls_begin(); It != P->decls_end(); ++It) {
       if (auto DD2 = dyn_cast<DeclaratorDecl>(*It))
         if (DD2->getBeginLoc() == DD->getBeginLoc())
-          if (DD2 != DD)
             Decls.push_back(DD2);
     }
   }
@@ -1992,37 +2011,6 @@ bool needExtraParens(const Expr *E) {
   }
 }
 
-bool isPredefinedStreamHandle(const Expr *E) {
-  Expr::EvalResult ER;
-  if (auto PE = dyn_cast<ParenExpr>(E->IgnoreImplicit())) {
-    if (auto CSCE = dyn_cast<CStyleCastExpr>(PE->getSubExpr())) {
-      if (!CSCE->getSubExpr()->isValueDependent() &&
-          CSCE->getSubExpr()->EvaluateAsInt(
-              ER, dpct::DpctGlobalInfo::getContext())) {
-        int64_t Value = ER.Val.getInt().getExtValue();
-        if (Value == 1 || Value == 2) {
-          // cudaStreamLegacy is ((cudaStream_t)0x1)
-          // cudaStreamPerThread is ((cudaStream_t)0x2)
-          return true;
-        }
-      }
-    }
-  } else if (!E->IgnoreImplicit()->isValueDependent() &&
-             E->IgnoreImplicit()->EvaluateAsInt(
-                 ER, dpct::DpctGlobalInfo::getContext())) {
-    int64_t Value = ER.Val.getInt().getExtValue();
-    if (Value == 0) {
-      // cudaStreamDefault is 0x00
-      return true;
-    }
-  } else if (dyn_cast<GNUNullExpr>(E->IgnoreImplicit()) ||
-             dyn_cast<CXXNullPtrLiteralExpr>(E->IgnoreImplicit())) {
-    // default stream can be used as NULL, __null, nullptr
-    return true;
-  }
-  return false;
-}
-
 // Get the range of an Expr in the largest (the outermost) macro definition
 // e.g.
 // line 1: #define MACRO_A 3
@@ -2083,12 +2071,10 @@ getTheLastCompleteImmediateRange(clang::SourceLocation BeginLoc,
   auto EndLevel = calculateExpansionLevel(EndLoc, false);
   while ((BeginLevel > 0 || EndLevel > 0) &&
          (isLocationStraddle(BeginLoc, EndLoc) ||
-          ((BeginLoc.isMacroID() &&
-            !dpct::DpctGlobalInfo::isInAnalysisScope(
-                SM.getFilename(SM.getSpellingLoc(BeginLoc)).str())) ||
-           (EndLoc.isMacroID() &&
-            !dpct::DpctGlobalInfo::isInAnalysisScope(
-                SM.getFilename(SM.getSpellingLoc(EndLoc)).str()))))) {
+          ((BeginLoc.isMacroID() && !dpct::DpctGlobalInfo::isInAnalysisScope(
+                                        SM.getSpellingLoc(BeginLoc))) ||
+           (EndLoc.isMacroID() && !dpct::DpctGlobalInfo::isInAnalysisScope(
+                                      SM.getSpellingLoc(EndLoc)))))) {
     if (BeginLevel > EndLevel) {
       BeginLoc = SM.getImmediateExpansionRange(BeginLoc).getBegin();
       BeginLevel--;
@@ -2155,114 +2141,92 @@ SourceLocation getLocInRange(SourceLocation Loc, SourceRange Range) {
 }
 
 std::pair<SourceLocation, SourceLocation>
-getRangeInRange(const Stmt *E, SourceLocation RangeBegin, SourceLocation RangeEnd) {
-  return getRangeInRange(E->getSourceRange(), RangeBegin, RangeEnd);
+getRangeInRange(const Stmt *E, SourceLocation RangeBegin,
+                SourceLocation RangeEnd, bool IncludeLastToken) {
+  return getRangeInRange(E->getSourceRange(), RangeBegin, RangeEnd,
+                         IncludeLastToken);
+}
+
+void traversePossibleLocations(const SourceLocation &SL,
+                               const SourceLocation &RangeBegin,
+                               const SourceLocation &RangeEnd,
+                               SourceLocation &Result, bool IsBegin) {
+  auto &SM = dpct::DpctGlobalInfo::getSourceManager();
+  if (!SL.isValid())
+    return;
+
+  if (!SL.isMacroID()) {
+    if (isInRange(RangeBegin, RangeEnd, SL)) {
+      if (Result.isValid()) {
+        if (IsBegin && SM.getDecomposedLoc(Result).second <
+                           SM.getDecomposedLoc(SL).second) {
+          Result = SL;
+        } else if (!IsBegin && SM.getDecomposedLoc(Result).second >
+                                   SM.getDecomposedLoc(SL).second) {
+          Result = SL;
+        } else {
+          return;
+        }
+      }
+      Result = SL;
+    }
+    return;
+  }
+
+  if (IsBegin) {
+    traversePossibleLocations(SM.getImmediateExpansionRange(SL).getBegin(),
+                              RangeBegin, RangeEnd, Result, IsBegin);
+  } else {
+    traversePossibleLocations(SM.getImmediateExpansionRange(SL).getEnd(),
+                              RangeBegin, RangeEnd, Result, IsBegin);
+  }
+  traversePossibleLocations(SM.getImmediateSpellingLoc(SL), RangeBegin,
+                            RangeEnd, Result, IsBegin);
 }
 
 std::pair<SourceLocation, SourceLocation>
-getRangeInRange(SourceRange Range, SourceLocation RangeBegin, SourceLocation RangeEnd) {
+getRangeInRange(SourceRange Range, SourceLocation SearchRangeBegin,
+                SourceLocation SearchRangeEnd, bool IncludeLastToken) {
   auto &SM = dpct::DpctGlobalInfo::getSourceManager();
   auto &Context = dpct::DpctGlobalInfo::getContext();
-  auto BeginCandidate = SM.getExpansionRange(Range).getBegin();
-  auto EndCandidate = SM.getExpansionRange(Range).getEnd();
-  auto LastTokenLength =
-      Lexer::MeasureTokenLength(EndCandidate, SM, Context.getLangOpts());
-  EndCandidate = EndCandidate.getLocWithOffset(LastTokenLength);
-  if (Range.getBegin().isMacroID() &&
-      !isInRange(RangeBegin, RangeEnd, BeginCandidate)) {
-    // Try getImmediateSpellingLoc
-    // e.g. M1(call(M2))
-    BeginCandidate = SM.getImmediateSpellingLoc(Range.getBegin());
-    if (BeginCandidate.isMacroID()) {
-      BeginCandidate = SM.getExpansionLoc(BeginCandidate);
-    }
-    if (!isInRange(RangeBegin, RangeEnd, BeginCandidate)) {
-      // Try getImmediateExpansionRange
-      // e.g. #define M1(x) call(x)
-      BeginCandidate = Range.getBegin();
-      while (
-          SM.isMacroArgExpansion(SM.getImmediateSpellingLoc(BeginCandidate))) {
-        BeginCandidate = SM.getImmediateSpellingLoc(BeginCandidate);
-      }
-      BeginCandidate = SM.getSpellingLoc(
-          SM.getImmediateExpansionRange(BeginCandidate).getBegin());
-      if (!isInRange(RangeBegin, RangeEnd, BeginCandidate)) {
-        BeginCandidate = SM.getSpellingLoc(
-            SM.getImmediateExpansionRange(Range.getBegin()).getBegin());
-        if (!isInRange(RangeBegin, RangeEnd, BeginCandidate)) {
-          // multi-Level funclike special process
-          // e.g.
-          // #define M1(x) call1(x)
-          // #define M2(y) call2(y)
-          // M1(M2(3))
-          BeginCandidate =
-              getDefinitionRange(Range.getBegin(), Range.getEnd()).getBegin();
-          if (!isInRange(RangeBegin, RangeEnd, BeginCandidate)) {
-            if (!isLocationStraddle(Range.getBegin(), Range.getEnd())) {
-              // Default use SpellingLoc
-              // e.g. M1(call(targetExpr))
-              BeginCandidate = SM.getSpellingLoc(Range.getBegin());
-            } else {
-              BeginCandidate =
-                  SM.getExpansionRange(Range).getBegin();
-            }
-          }
+  SourceLocation ResultBegin = SourceLocation();
+  SourceLocation ResultEnd = SourceLocation();
+  traversePossibleLocations(Range.getBegin(), SearchRangeBegin, SearchRangeEnd,
+                            ResultBegin, true);
+  traversePossibleLocations(Range.getEnd(), SearchRangeBegin, SearchRangeEnd,
+                            ResultEnd, false);
+  if (ResultBegin.isValid() && ResultEnd.isValid()) {
+    if (isSameLocation(ResultBegin, ResultEnd)) {
+      auto It = dpct::DpctGlobalInfo::getExpansionRangeBeginMap().find(
+          getCombinedStrFromLoc(ResultBegin));
+      if(It != dpct::DpctGlobalInfo::getExpansionRangeBeginMap().end()){
+        // If the begin/end loc are at the same location
+        // and the loc is another macro expand,
+        // recursively search for a more precise range.
+        auto MacroDefBegin = It->second.getBegin();
+        auto MacroDefEnd = It->second.getEnd();
+        auto MacroDefEndTokenLength =
+            Lexer::MeasureTokenLength(MacroDefEnd, SM, Context.getLangOpts());
+        MacroDefEnd = MacroDefEnd.getLocWithOffset(MacroDefEndTokenLength);
+        auto InnerResult = getRangeInRange(Range, MacroDefBegin, MacroDefEnd, false);
+        // If the new range covers the entire macro, use the original range,
+        // otherwise, use the inner range.
+        if(!isSameLocation(It->second.getBegin(), InnerResult.first) ||
+           !isSameLocation(It->second.getEnd(), InnerResult.second)){
+          ResultBegin = InnerResult.first;
+          ResultEnd = InnerResult.second;
         }
       }
     }
-  }
-
-  // Similar to get begin loc, but need to add last token length
-  if (Range.getEnd().isMacroID() &&
-      !isInRange(RangeBegin, RangeEnd, EndCandidate)) {
-    // Try ImmediateSpelling
-    EndCandidate = SM.getImmediateSpellingLoc(Range.getEnd());
-    if (EndCandidate.isMacroID()) {
-      EndCandidate = SM.getImmediateExpansionRange(EndCandidate).getEnd();
-    }
-    auto LastTokenLength =
-        Lexer::MeasureTokenLength(EndCandidate, SM, Context.getLangOpts());
-    EndCandidate = EndCandidate.getLocWithOffset(LastTokenLength);
-    if (!isInRange(RangeBegin, RangeEnd, EndCandidate)) {
-      // Try ImmediateExpansion
-      EndCandidate = Range.getEnd();
-      while (SM.isMacroArgExpansion(SM.getImmediateSpellingLoc(EndCandidate))) {
-        EndCandidate = SM.getImmediateSpellingLoc(EndCandidate);
-      }
-      EndCandidate = SM.getSpellingLoc(
-          SM.getImmediateExpansionRange(EndCandidate).getEnd());
+    if (IncludeLastToken) {
       auto LastTokenLength =
-          Lexer::MeasureTokenLength(EndCandidate, SM, Context.getLangOpts());
-      EndCandidate = EndCandidate.getLocWithOffset(LastTokenLength);
-      if (!isInRange(RangeBegin, RangeEnd, EndCandidate)) {
-        EndCandidate = SM.getSpellingLoc(
-            SM.getImmediateExpansionRange(Range.getEnd()).getEnd());
-        auto LastTokenLength =
-            Lexer::MeasureTokenLength(EndCandidate, SM, Context.getLangOpts());
-        EndCandidate = EndCandidate.getLocWithOffset(LastTokenLength);
-        if (!isInRange(RangeBegin, RangeEnd, EndCandidate)) {
-          EndCandidate =
-              getDefinitionRange(Range.getBegin(), Range.getEnd()).getEnd();
-          auto LastTokenLength = Lexer::MeasureTokenLength(
-              EndCandidate, SM, Context.getLangOpts());
-          EndCandidate = EndCandidate.getLocWithOffset(LastTokenLength);
-          if (!isInRange(RangeBegin, RangeEnd, EndCandidate)) {
-            if (!isLocationStraddle(Range.getBegin(), Range.getEnd())) {
-              // Default use SpellingLoc
-              EndCandidate = SM.getSpellingLoc(Range.getEnd());
-              auto LastTokenLength = Lexer::MeasureTokenLength(
-                  EndCandidate, SM, Context.getLangOpts());
-              EndCandidate = EndCandidate.getLocWithOffset(LastTokenLength);
-            } else {
-              EndCandidate = SM.getExpansionRange(Range).getEnd();
-            }
-          }
-        }
-      }
+          Lexer::MeasureTokenLength(ResultEnd, SM, Context.getLangOpts());
+      ResultEnd = ResultEnd.getLocWithOffset(LastTokenLength);
     }
+    return std::pair<SourceLocation, SourceLocation>(ResultBegin, ResultEnd);
   }
-  return std::pair<SourceLocation, SourceLocation>(BeginCandidate,
-                                                   EndCandidate);
+  return std::pair<SourceLocation, SourceLocation>(Range.getBegin(),
+                                                   Range.getEnd());
 }
 
 unsigned int calculateIndentWidth(const CUDAKernelCallExpr *Node,
@@ -2336,7 +2300,7 @@ bool isIncludedFile(const std::string &CurrentFile,
     } else if (Q.front() == CheckingFileInfo) {
       return true;
     } else {
-      for (auto IncludeFile : Q.front()->getIncludedFilesInfoSet()) {
+      for (const auto &IncludeFile : Q.front()->getIncludedFilesInfoSet()) {
         if (InsertedFile.find(IncludeFile) == InsertedFile.end()) {
           Q.insert(Q.end(), IncludeFile);
           InsertedFile.insert(IncludeFile);
@@ -2434,10 +2398,9 @@ clang::RecordDecl *getRecordDecl(clang::QualType QT) {
   return nullptr;
 }
 
-bool checkPointerInStructRecursively(const clang::DeclRefExpr *DRE) {
+bool checkPointerInStructRecursively(const RecordDecl *R) {
   std::deque<const clang::RecordDecl *> Q;
-  Q.push_back(getRecordDecl(DRE->getType()));
-
+  Q.push_back(R);
   while (!Q.empty()) {
     if (Q.front() == nullptr) {
       Q.pop_front();
@@ -2459,6 +2422,10 @@ bool checkPointerInStructRecursively(const clang::DeclRefExpr *DRE) {
   return false;
 }
 
+bool checkPointerInStructRecursively(const clang::DeclRefExpr *DRE) {
+  return checkPointerInStructRecursively(getRecordDecl(DRE->getType()));
+}
+
 SourceLocation getImmSpellingLocRecursive(const SourceLocation Loc) {
   auto &SM = dpct::DpctGlobalInfo::getSourceManager();
   if (SM.isMacroArgExpansion(Loc) &&
@@ -2466,65 +2433,6 @@ SourceLocation getImmSpellingLocRecursive(const SourceLocation Loc) {
     return getImmSpellingLocRecursive(SM.getImmediateSpellingLoc(Loc));
   }
   return Loc;
-}
-
-clang::dpct::FFTTypeEnum getFFTTypeFromValue(std::int64_t Value) {
-  switch (Value) {
-  case 0x2a:
-    return clang::dpct::FFTTypeEnum::R2C;
-  case 0x2c:
-    return clang::dpct::FFTTypeEnum::C2R;
-  case 0x29:
-    return clang::dpct::FFTTypeEnum::C2C;
-  case 0x6a:
-    return clang::dpct::FFTTypeEnum::D2Z;
-  case 0x6c:
-    return clang::dpct::FFTTypeEnum::Z2D;
-  case 0x69:
-    return clang::dpct::FFTTypeEnum::Z2Z;
-  default:
-    return clang::dpct::FFTTypeEnum::Unknown;
-  }
-}
-
-std::string getPrecAndDomainStrFromValue(std::int64_t Value) {
-  std::string PrecAndDomain;
-  std::string Prec, Domain;
-  if (Value == 0x2a || Value == 0x2c) {
-    Prec = "oneapi::mkl::dft::precision::SINGLE";
-    Domain = "oneapi::mkl::dft::domain::REAL";
-  } else if (Value == 0x29) {
-    Prec = "oneapi::mkl::dft::precision::SINGLE";
-    Domain = "oneapi::mkl::dft::domain::COMPLEX";
-  } else if (Value == 0x6a || Value == 0x6c) {
-    Prec = "oneapi::mkl::dft::precision::DOUBLE";
-    Domain = "oneapi::mkl::dft::domain::REAL";
-  } else {
-    Prec = "oneapi::mkl::dft::precision::DOUBLE";
-    Domain = "oneapi::mkl::dft::domain::COMPLEX";
-  }
-  PrecAndDomain = Prec + ", " + Domain;
-  return PrecAndDomain;
-}
-
-std::string getPrecAndDomainStrFromExecFuncName(std::string ExecFuncName) {
-  std::string PrecAndDomain;
-  std::string Prec, Domain;
-  if (ExecFuncName == "cufftExecR2C" || ExecFuncName == "cufftExecC2R") {
-    Prec = "oneapi::mkl::dft::precision::SINGLE";
-    Domain = "oneapi::mkl::dft::domain::REAL";
-  } else if (ExecFuncName == "cufftExecC2C") {
-    Prec = "oneapi::mkl::dft::precision::SINGLE";
-    Domain = "oneapi::mkl::dft::domain::COMPLEX";
-  } else if (ExecFuncName == "cufftExecD2Z" || ExecFuncName == "cufftExecZ2D") {
-    Prec = "oneapi::mkl::dft::precision::DOUBLE";
-    Domain = "oneapi::mkl::dft::domain::REAL";
-  } else {
-    Prec = "oneapi::mkl::dft::precision::DOUBLE";
-    Domain = "oneapi::mkl::dft::domain::COMPLEX";
-  }
-  PrecAndDomain = Prec + ", " + Domain;
-  return PrecAndDomain;
 }
 
 bool getTypeRange(const clang::VarDecl *PVD, clang::SourceRange &SR) {
@@ -2610,7 +2518,6 @@ SourceRange getDefinitionRange(SourceLocation Begin, SourceLocation End) {
 
   // if there is still either one of begin/end is macro arg expansion
   if (SM.isMacroArgExpansion(Begin) || SM.isMacroArgExpansion(End)) {
-
     // In cases like CALL(FUNC_NAME CALL(ARGS))
     // If the Begin location is always the 1st token of macro defines,
     // it's safe to use the expansion location as the begin location.
@@ -3154,23 +3061,22 @@ bool isModifiedRef(const clang::DeclRefExpr *DRE) {
 }
 
 bool isDefaultStream(const Expr *StreamArg) {
-  auto Arg = StreamArg->IgnoreImpCasts();
-  bool IsDefaultStream = false;
-  // Need queue for default stream or stream 0, 1 and 2
-  if (Arg->getStmtClass() == Stmt::CXXDefaultArgExprClass) {
-    IsDefaultStream = true;
-  } else if (Arg->getStmtClass() == Stmt::IntegerLiteralClass) {
-    if (auto IL = dyn_cast<IntegerLiteral>(Arg)) {
-      auto V = IL->getValue().getZExtValue();
-      if (V <= 2) // V should be 0, 1 or 2
-        IsDefaultStream = true;
-    }
-  } else if (Arg->getStmtClass() == Expr::GNUNullExprClass) {
-    IsDefaultStream = true;
-  } else if (Arg->getStmtClass() == Expr::CXXNullPtrLiteralExprClass) {
-    IsDefaultStream = true;
+  StreamArg = StreamArg->IgnoreCasts();
+  if (isa<CXXNullPtrLiteralExpr>(StreamArg) || isa<GNUNullExpr>(StreamArg)) {
+    return true;
+  } else if (auto DAE = dyn_cast<CXXDefaultArgExpr>(StreamArg)) {
+    return isDefaultStream(DAE->getExpr());
+  } else if (auto Paren = dyn_cast<ParenExpr>(StreamArg)) {
+    return isDefaultStream(Paren->getSubExpr());
   }
-  return IsDefaultStream;
+  Expr::EvalResult Result;
+  if (!StreamArg->isValueDependent() &&
+      StreamArg->EvaluateAsInt(Result, dpct::DpctGlobalInfo::getContext())) {
+    // 0 or 1 (cudaStreamLegacy) or 2 (cudaStreamPerThread)
+    // all migrated to default queue;
+    return Result.Val.getInt().getZExtValue() < 3;
+  }
+  return false;
 }
 
 const NamedDecl *getNamedDecl(const clang::Type *TypePtr) {
@@ -3195,8 +3101,7 @@ bool isTypeInAnalysisScope(const clang::Type *TypePtr) {
   bool IsInAnalysisScope = false;
   if (const auto *ND = getNamedDecl(TypePtr)) {
     auto Loc = ND->getBeginLoc();
-    auto Path = dpct::DpctGlobalInfo::getLocInfo(Loc).first;
-    if (dpct::DpctGlobalInfo::isInAnalysisScope(Path, true))
+    if (dpct::DpctGlobalInfo::isInAnalysisScope(Loc))
       IsInAnalysisScope = true;
   }
   return IsInAnalysisScope;
@@ -4032,4 +3937,30 @@ std::string getArgTypeStr(const CallExpr *CE, unsigned int Idx) {
       .getCanonicalType()
       .getUnqualifiedType()
       .getAsString();
+}
+std::string getFunctionName(const clang::FunctionDecl *Node) {
+  std::string FunctionName;
+  llvm::raw_string_ostream OS(FunctionName);
+  auto PP = dpct::DpctGlobalInfo::getContext().getPrintingPolicy();
+  if (const auto *CMD = dyn_cast<clang::CXXMethodDecl>(Node)) {
+    const CXXRecordDecl *CRD = CMD->getParent();
+    CRD->printName(OS, PP);
+    OS << "::";
+  }
+  Node->getNameInfo().printName(OS, PP);
+  OS.flush();
+  return FunctionName;
+}
+std::string getFunctionName(const clang::UnresolvedLookupExpr *Node) {
+  return Node->getNameInfo().getName().getAsString();
+}
+std::string getFunctionName(const clang::FunctionTemplateDecl *Node) {
+  return getFunctionName(Node->getTemplatedDecl());
+}
+bool isLambda(const clang::FunctionDecl *FD) {
+  if (const auto *CMD = dyn_cast<clang::CXXMethodDecl>(FD)) {
+    const CXXRecordDecl *CRD = CMD->getParent();
+    return CRD->isLambda();
+  }
+  return false;
 }

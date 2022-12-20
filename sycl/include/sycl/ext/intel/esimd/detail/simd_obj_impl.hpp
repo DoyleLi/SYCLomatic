@@ -18,8 +18,9 @@
 #include <sycl/ext/intel/esimd/detail/type_format.hpp>
 #include <sycl/ext/intel/esimd/simd_view.hpp>
 
-__SYCL_INLINE_NAMESPACE(cl) {
-namespace __ESIMD_NS {
+namespace sycl {
+__SYCL_INLINE_VER_NAMESPACE(_V1) {
+namespace ext::intel::esimd {
 
 /// @addtogroup sycl_esimd_core
 /// @{
@@ -325,18 +326,10 @@ public:
     copy_from(acc, offset, Flags{});
   }
 
-  /// Initializes this object from an rvalue to an array with the same number
-  /// of elements.
-  /// @param Arr Rvalue reference to the array.
-  template <int N1> std::enable_if_t<N1 == N> copy_from(const Ty (&&Arr)[N1]) {
-    __esimd_dbg_print(copy_from(const Ty(&&Arr)[N1]));
-    init_from_array(std::move(Arr));
-  }
-
   /// Type conversion into a scalar:
   /// <code><simd_obj_impl<RawTy, 1, simd<Ty,1>></code> to \c Ty.
   template <typename T = simd_obj_impl,
-            typename = sycl::detail::enable_if_t<T::length == 1>>
+            typename = std::enable_if_t<T::length == 1>>
   operator Ty() const {
     __esimd_dbg_print(operator Ty());
     return bitcast_to_wrapper_type<Ty>(data()[0]);
@@ -888,5 +881,6 @@ protected:
 
 } // namespace detail
 
-} // namespace __ESIMD_NS
-} // __SYCL_INLINE_NAMESPACE(cl)
+} // namespace ext::intel::esimd
+} // __SYCL_INLINE_VER_NAMESPACE(_V1)
+} // namespace sycl

@@ -21,6 +21,20 @@
 
 #include "macro_test.h"
 
+
+#include <thrust/inner_product.h>
+#include <thrust/extrema.h>
+#include <thrust/host_vector.h>
+#include <thrust/gather.h>
+#include <thrust/scatter.h>
+#include <thrust/tuple.h>
+#include <thrust/device_ptr.h>
+#include <thrust/copy.h>
+#include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
+#include <thrust/random.h>
+#include <thrust/reduce.h>
+
 #define CUDA_NUM_THREADS 1024+32
 #define GET_BLOCKS(n,t)  1+n+t-1
 #define GET_BLOCKS2(n,t) 1+n+t
@@ -213,20 +227,21 @@ double cosine = cos(2 * PI);
 MACRO_KC
 
 
-//CHECK: #define HARD_KC(NAME, a, b, c, d)                                                   \
+//CHECK: #define HARD_KC(NAME, a, b, c, d)                                              \
 //CHECK-NEXT:   q_ct1.submit([&](sycl::handler &cgh) {                                       \
 //CHECK-NEXT:     auto c_ct0 = c;                                                            \
 //CHECK-NEXT:     auto d_ct1 = d;                                                            \
-//CHECK-NEXT:                                                                                \
-//CHECK-NEXT:     cgh.parallel_for(sycl::nd_range<3>(a * b, b),                              \
-//CHECK-NEXT:                      [=](sycl::nd_item<3> item_ct1) { foo3(c_ct0, d_ct1); });  \
+//CHECK:     cgh.parallel_for(                                                          \
+//CHECK-NEXT:         sycl::nd_range<3>(sycl::range<3>(1, 1, a) * sycl::range<3>(1, 1, b),   \
+//CHECK-NEXT:                           sycl::range<3>(1, 1, b)),                            \
+//CHECK-NEXT:         [=](sycl::nd_item<3> item_ct1) { foo3(c_ct0, d_ct1); });               \
 //CHECK-NEXT:   });
-//CHECK-NEXT:   /*
-//CHECK-NEXT:   DPCT1038:{{[0-9]+}}: When the kernel function name is used as a macro argument, the
-//CHECK-NEXT:   migration result may be incorrect. You need to verify the definition of the
-//CHECK-NEXT:   macro.
-//CHECK-NEXT:   */
-//CHECK-NEXT:   HARD_KC(foo3, sycl::range<3>(1, 1, 3), sycl::range<3>(1, 1, 2), 1, 0)
+//CHECK-NEXT: /*
+//CHECK-NEXT: DPCT1038:{{[0-9]+}}: When the kernel function name is used as a macro argument, the
+//CHECK-NEXT: migration result may be incorrect. You need to verify the definition of the
+//CHECK-NEXT: macro.
+//CHECK-NEXT: */
+//CHECK-NEXT: HARD_KC(foo3, sycl::range<3>(1, 1, 3), sycl::range<3>(1, 1, 2), 1, 0)
 #define HARD_KC(NAME,a,b,c,d) NAME<<<a,b,0>>>(c,d);
 HARD_KC(foo3,3,2,1,0)
 
@@ -281,11 +296,11 @@ int b;
     #endif
   );
 
-  #define SIZE    (100*1024*1024)
+  #define SIZE3    (100*1024*1024)
   unsigned char *dev_buffer;
   unsigned char *buffer = (unsigned char*)malloc(500);
-  //CHECK: q_ct1.memcpy(dev_buffer, buffer, SIZE).wait();
-  cudaMemcpy( dev_buffer, buffer, SIZE, cudaMemcpyHostToDevice);
+  //CHECK: q_ct1.memcpy(dev_buffer, buffer, SIZE3).wait();
+  cudaMemcpy( dev_buffer, buffer, SIZE3, cudaMemcpyHostToDevice);
 }
 
 #define MMM(x)
@@ -365,17 +380,17 @@ void bar() {
 #define AAA int *a
 #define BBB int *BB
 
-// CHECK: #define CCC AAA, float *sp_lj, float *sp_coul, int *ljd, sycl::accessor<double, 2, sycl::access_mode::read_write, sycl::access::target::local> la, int *b=0
+// CHECK: #define CCC AAA, float *sp_lj, float *sp_coul, int *ljd, sycl::local_accessor<double, 2> la, int *b=0
 // CHECK-NEXT: #define CC AAA, BBB
 #define CCC AAA, int *b=0
 #define CC AAA, BBB
 
 // CHECK: #define CCCC(x) void fooc(x)
-// CHECK-NEXT: #define CCCCC(x) void foocc(x, float *sp_lj, float *sp_coul, int *ljd, sycl::accessor<double, 2, sycl::access_mode::read_write, sycl::access::target::local> la)
+// CHECK-NEXT: #define CCCCC(x) void foocc(x, float *sp_lj, float *sp_coul, int *ljd, sycl::local_accessor<double, 2> la)
 #define CCCC(x) __device__ void fooc(x)
 #define CCCCC(x) __device__ void foocc(x)
 
-// CHECK: #define XX(x) void foox(x, float *sp_lj, float *sp_coul, int *ljd, sycl::accessor<double, 2, sycl::access_mode::read_write, sycl::access::target::local> la)
+// CHECK: #define XX(x) void foox(x, float *sp_lj, float *sp_coul, int *ljd, sycl::local_accessor<double, 2> la)
 // CHECK-NEXT: #define FF XX(CC)
 #define XX(x) __device__ void foox(x)
 #define FF XX(CC)
@@ -414,7 +429,7 @@ CCCC(CCC)
   __shared__ double la[8][0];
 }
 
-// CHECK: #define FFF void foo(AAA, BBB, float *sp_lj, float *sp_coul, int *ljd, sycl::accessor<double, 2, sycl::access_mode::read_write, sycl::access::target::local> la)
+// CHECK: #define FFF void foo(AAA, BBB, float *sp_lj, float *sp_coul, int *ljd, sycl::local_accessor<double, 2> la)
 #define FFF __device__ void foo(AAA, BBB)
 
 // CHECK: FFF
@@ -429,7 +444,7 @@ FFF
 
 }
 
-// CHECK: #define FFFFF(aaa,bbb) void foo4(const int * __restrict__ aaa, const float * __restrict__ bbb, int *c, BBB, sycl::nd_item<3> item_ct1, float *sp_lj, float *sp_coul, int *ljd, sycl::accessor<double, 2, sycl::access_mode::read_write, sycl::access::target::local> la)
+// CHECK: #define FFFFF(aaa,bbb) void foo4(const int * __restrict__ aaa, const float * __restrict__ bbb, int *c, BBB, sycl::nd_item<3> item_ct1, float *sp_lj, float *sp_coul, int *ljd, sycl::local_accessor<double, 2> la)
 #define FFFFF(aaa,bbb) __device__ void foo4(const int * __restrict__ aaa, const float * __restrict__ bbb, int *c, BBB)
 
 // CHECK: FFFFF(pos, q)
@@ -446,7 +461,7 @@ FFFFF(pos, q)
   const int tid = threadIdx.x;
 }
 
-// CHECK: #define FFFFFF(aaa,bbb) void foo5(const int * __restrict__ aaa, const float * __restrict__ bbb, sycl::nd_item<3> item_ct1, float *sp_lj, float *sp_coul, int *ljd, sycl::accessor<double, 2, sycl::access_mode::read_write, sycl::access::target::local> la)
+// CHECK: #define FFFFFF(aaa,bbb) void foo5(const int * __restrict__ aaa, const float * __restrict__ bbb, sycl::nd_item<3> item_ct1, float *sp_lj, float *sp_coul, int *ljd, sycl::local_accessor<double, 2> la)
 #define FFFFFF(aaa,bbb) __device__ void foo5(const int * __restrict__ aaa, const float * __restrict__ bbb)
 
 // CHECK: FFFFFF(pos, q)
@@ -464,7 +479,7 @@ FFFFFF(pos, q)
 }
 
 // CHECK: void foo6(AAA, BBB, float *sp_lj, float *sp_coul, int *ljd,
-// CHECK-NEXT:   sycl::accessor<double, 2, sycl::access_mode::read_write, sycl::access::target::local> la)
+// CHECK-NEXT:   sycl::local_accessor<double, 2> la)
 // CHECK-NEXT: {
 // CHECK-NEXT: }
 __device__ void foo6(AAA, BBB)
@@ -547,13 +562,13 @@ __global__ void templatefoo(){
   int y = b;
 }
 //CHECK: #define AAA 15 + 3
-//CHECK-NEXT: #define CCC <<<1,1>>>()
+//CHECK-NEXT: #define CCC <<<sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)>>>()
 //CHECK-NEXT: #define KERNEL(A, B)                                                           \
 //CHECK-NEXT:   dpct::get_default_queue().parallel_for(                                      \
 //CHECK-NEXT:         sycl::nd_range<3>(sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)),   \
 //CHECK-NEXT:         [=](sycl::nd_item<3> item_ct1) { templatefoo<A, B>(); });
 //CHECK-NEXT: #define CALL_KERNEL(C, D) KERNEL(C, D); int a = 0;
-//CHECK-NEXT: #define CALL_KERNEL2(E, F) sycl::range<3>(1, 1, 1)
+//CHECK-NEXT: #define CALL_KERNEL2(E, F) CALL_KERNEL(E, F)
 //CHECK-NEXT: void templatefoo2(){
 //CHECK-NEXT:   CALL_KERNEL2(8, AAA)
 //CHECK-NEXT: }
@@ -655,7 +670,7 @@ VECTOR_TYPE_DEF(int)
 //CHECK-NEXT: for all macro uses. Adjust the code.
 //CHECK-NEXT: */
 //CHECK-NEXT: #define POW3(x, y) sycl::pow<double>(x, y)
-//CHECK-NEXT: #define SQRT(x) sycl::sqrt(x)
+//CHECK: #define SQRT(x) sycl::sqrt(x)
 //CHECK-NEXT: void foo12(){
 //CHECK-NEXT: real *vx;
 //CHECK-NEXT: real *vy;
@@ -681,16 +696,16 @@ real v5 = POW3(vx[id], 2);
 }
 
 //CHECK: #define CALL(call) call;
-//CHECK-NEXT: #define SIZE 8
+//CHECK-NEXT: #define SIZE2 8
 //CHECK-NEXT: void foo13(){
 //CHECK-NEXT:   int *a;
-//CHECK-NEXT:   CALL(a = sycl::malloc_device<int>(SIZE * 10, dpct::get_default_queue()));
+//CHECK-NEXT:   CALL(a = sycl::malloc_device<int>(SIZE2 * 10, dpct::get_default_queue()));
 //CHECK-NEXT: }
 #define CALL(call) call;
-#define SIZE 8
+#define SIZE2 8
 void foo13(){
   int *a;
-  CALL(cudaMalloc(&a, SIZE * 10 * sizeof(int)));
+  CALL(cudaMalloc(&a, SIZE2 * 10 * sizeof(int)));
 }
 
 //CHECK: #define CONST const
@@ -812,16 +827,16 @@ void foo17(){
 }
 
 //CHECK: #define CONCATE(name) cuda##name
-//CHECK-NEXT: typedef sycl::queue *stream_t2;
-//CHECK-NEXT: typedef sycl::event event_t2;
+//CHECK-NEXT: typedef dpct::queue_ptr stream_t2;
+//CHECK-NEXT: typedef dpct::event_ptr event_t2;
 #define CONCATE(name) cuda##name
 typedef CONCATE(Stream_t) stream_t2;
 typedef CONCATE(Event_t) event_t2;
 
 //CHECK: void foo18() {
 //CHECK-NEXT:   dpct::device_ext &dev_ct1 = dpct::get_current_device();
-//CHECK-NEXT:   sycl::event event;
-//CHECK-NEXT:   event.wait_and_throw();
+//CHECK-NEXT:   dpct::event_ptr event;
+//CHECK-NEXT:   event->wait_and_throw();
 //CHECK-NEXT:   stream_t2 *stream;
 //CHECK-NEXT:   stream_t2 stream2;
 //CHECK-NEXT:   *(stream) = dev_ct1.create_queue();
@@ -886,14 +901,16 @@ void foo19(){
 }
 
 //     CHECK:#define CMC_PROFILING_BEGIN()                                                  \
-//CHECK-NEXT:  sycl::event start;                                                           \
+//CHECK-NEXT:  dpct::event_ptr start;                                                         \
 //CHECK-NEXT:  std::chrono::time_point<std::chrono::steady_clock> start_ct1;                \
-//CHECK-NEXT:  sycl::event stop;                                                            \
+//CHECK-NEXT:  dpct::event_ptr stop;                                                          \
 //CHECK-NEXT:  std::chrono::time_point<std::chrono::steady_clock> stop_ct1;                 \
 //CHECK-NEXT:  if (CMC_profile)                                                             \
 //CHECK-NEXT:  {                                                                            \
+//CHECK-NEXT:    start = new sycl::event();                                                 \
+//CHECK-NEXT:    stop = new sycl::event();                                                  \
 //CHECK-NEXT:    start_ct1 = std::chrono::steady_clock::now();                              \
-//CHECK-NEXT:  start = q_ct1.ext_oneapi_submit_barrier();                         \
+//CHECK-NEXT:    *start = q_ct1.ext_oneapi_submit_barrier();                                \
 //CHECK-NEXT:  }
 #define CMC_PROFILING_BEGIN()                                                                                      \
   cudaEvent_t start;                                                                                               \
@@ -911,11 +928,13 @@ void foo19(){
 //CHECK-NEXT:  if (CMC_profile)                                                             \
 //CHECK-NEXT:  {                                                                            \
 //CHECK-NEXT:    stop_ct1 = std::chrono::steady_clock::now();                               \
-//CHECK-NEXT:    stop = q_ct1.ext_oneapi_submit_barrier();                         \
-//CHECK-NEXT:    stop.wait_and_throw();                                                     \
+//CHECK-NEXT:    *stop = q_ct1.ext_oneapi_submit_barrier();                                 \
+//CHECK-NEXT:    stop->wait_and_throw();                                                    \
 //CHECK-NEXT:    float time = 0.0f;                                                         \
 //CHECK-NEXT:    time = std::chrono::duration<float, std::milli>(stop_ct1 - start_ct1)      \
 //CHECK-NEXT:               .count();                                                       \
+//CHECK-NEXT:    dpct::destroy_event(start);                                                \
+//CHECK-NEXT:    dpct::destroy_event(stop);                                                 \
 //CHECK-NEXT:  }                                                                            \
 //CHECK-NEXT:  int error = 0;
 #define CMC_PROFILING_END(lineno)                                                                          \
@@ -979,10 +998,10 @@ __device__ void doo(float f) {
 }
 
 //CHECK: void foo22(const sycl::stream &stream_ct1) {
-//CHECK-NEXT:   FUNCNAME(doo)<float, PASS(1 +) 2, SIZE>(PASS(1 +) 0.0f, stream_ct1);
+//CHECK-NEXT:   FUNCNAME(doo)<float, PASS(1 +) 2, SIZE2>(PASS(1 +) 0.0f, stream_ct1);
 //CHECK-NEXT: }
 __global__ void foo22() {
-  FUNCNAME(doo)<float, PASS(1 +) 2, SIZE>(PASS(1 +) 0.0f);
+  FUNCNAME(doo)<float, PASS(1 +) 2, SIZE2>(PASS(1 +) 0.0f);
 }
 
 //CHECK: static __inline__ void __attribute__((__always_inline__, __nodebug__, __target__("mmx")))
@@ -1118,7 +1137,7 @@ void foo28(){
 #define local_allocate_store_charge()                                       \
     __shared__ double red_acc[8][BLOCK_PAIR / SIMD_SIZE];
 
-//CHECK: void foo29(sycl::accessor<double, 2, sycl::access_mode::read_write, sycl::access::target::local> red_acc) {
+//CHECK: void foo29(sycl::local_accessor<double, 2> red_acc) {
 //CHECK-NEXT: }
 __global__ void foo29() {
   local_allocate_store_charge();
@@ -1135,10 +1154,13 @@ template<class T1, class T2, int N> __global__ void foo31();
 #define FOO31(DIMS) foo31<unsigned int, float, DIMS><<<1,1>>>();
 
 //CHECK:   q_ct1.submit([&](sycl::handler &cgh) {
-//CHECK-NEXT:     sycl::accessor<double, 2, sycl::access_mode::read_write,
-//CHECK-NEXT:                    sycl::access::target::local>
-//CHECK-NEXT:         red_acc_acc_ct1(sycl::range<2>(8 /*8*/, 8 /*BLOCK_PAIR / SIMD_SIZE*/),
-//CHECK-NEXT:                         cgh);
+//CHECK-NEXT:     /*
+//CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'BLOCK_PAIR / SIMD_SIZE' expression was replaced with a
+//CHECK-NEXT:     value. Modify the code to use original expression, provided in comments,
+//CHECK-NEXT:     if it is correct.
+//CHECK-NEXT:     */
+//CHECK-NEXT:     sycl::local_accessor<double, 2> red_acc_acc_ct1(
+//CHECK-NEXT:         sycl::range<2>(8, 8 /*BLOCK_PAIR / SIMD_SIZE*/), cgh);
 
 //CHECK:     cgh.parallel_for(
 //CHECK-NEXT:         sycl::nd_range<3>(sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)),
@@ -1166,15 +1188,86 @@ __global__ void template_kernel(T t){
 int foo31(){
   //CHECK: VA_CALL(([&] {
   //CHECK-NEXT:   dpct::get_default_queue().submit([&](sycl::handler &cgh) {
-  //CHECK-NEXT:     sycl::accessor<int, 0, sycl::access_mode::read_write,
-  //CHECK-NEXT:                    sycl::access::target::local>
-  //CHECK-NEXT:         t2_acc_ct1(cgh);
+  //CHECK-NEXT:     sycl::local_accessor<int, 0> t2_acc_ct1(cgh);
   //CHECK:     cgh.parallel_for(
   //CHECK-NEXT:         sycl::nd_range<3>(sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)),
   //CHECK-NEXT:         [=](sycl::nd_item<3> item_ct1) {
-  //CHECK-NEXT:           template_kernel<int>(10, t2_acc_ct1.get_pointer());
+  //CHECK-NEXT:           template_kernel<int>(10, t2_acc_ct1);
   //CHECK-NEXT:         });
   //CHECK-NEXT:   });
   //CHECK-NEXT: }));
   VA_CALL( ([&]{ template_kernel<int><<<1,1,0>>>(10); }) );
+}
+
+class ArgClass{};
+
+
+#define SIZE 256
+//CHECK: #define VACALL4(...) __VA_ARGS__()
+//CHECK-NEXT: #define VACALL3(...) VACALL4(__VA_ARGS__)
+//CHECK-NEXT: #define VACALL2(...) VACALL3(__VA_ARGS__)
+//CHECK-NEXT: #define VACALL(x)                                                              \
+//CHECK-NEXT:   dpct::get_default_queue().submit([&](sycl::handler &cgh) {                   \
+//CHECK-NEXT:     auto i_ct0 = i;                                                            \
+//CHECK-NEXT:     auto ac_ct0 = ac;                                                          \
+//CHECK:     cgh.parallel_for(                                                          \
+//CHECK-NEXT:         sycl::nd_range<3>(sycl::range<3>(1, 1, 2) *                            \
+//CHECK-NEXT:                               sycl::range<3>(1, 1, SIZE),                      \
+//CHECK-NEXT:                           sycl::range<3>(1, 1, SIZE)),                         \
+//CHECK-NEXT:         [=](sycl::nd_item<3> item_ct1) { foo32(i_ct0, ac_ct0); });             \
+//CHECK-NEXT:   });
+#define VACALL4(...) __VA_ARGS__()
+#define VACALL3(...) VACALL4(__VA_ARGS__)
+#define VACALL2(...) VACALL3(__VA_ARGS__)
+#define VACALL(x) foo32<<<2,SIZE,0>>>(i, ac)
+__global__ void foo32(int a, ArgClass ac){}
+
+// CHECK: int foo33(){
+// CHECK-NEXT:   ArgClass ac;
+// CHECK-NEXT:   int i;
+// CHECK-NEXT:   /*
+// CHECK-NEXT:   DPCT1038:{{[0-9]+}}: When the kernel function name is used as a macro argument, the
+// CHECK-NEXT:   migration result may be incorrect. You need to verify the definition of the
+// CHECK-NEXT:   macro.
+// CHECK-NEXT:   */
+// CHECK-NEXT:   VACALL2([&] {VACALL(0);
+// CHECK-NEXT:   });
+// CHECK-NEXT: }
+int foo33(){
+  ArgClass ac;
+  int i;
+  VACALL2([&]{VACALL(0);});
+}
+
+
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/unique.h>
+
+void foo34() {
+
+  int *ptr;
+  thrust::host_vector<int> h_keys, h_values;
+  thrust::device_vector<int> d_keys, d_values;
+  thrust::equal_to<int> binary_pred;
+
+  auto dummy_dev = thrust::device_ptr<int>(ptr);
+  int numel = 1;
+  using index_t = int;
+  VACALL3([&]() {
+    int64_t num_of_segments;
+    {
+      auto sorted_indices_dev = thrust::device_ptr<index_t>(ptr);
+      auto dummy_dev = thrust::device_ptr<index_t>(ptr);
+      //CHECK: auto ends = dpct::unique_copy(
+      //CHECK-NEXT:   oneapi::dpl::execution::make_device_policy(dpct::get_default_queue()),
+      //CHECK-NEXT:   sorted_indices_dev, sorted_indices_dev + numel,
+      //CHECK-NEXT:   dpct::make_counting_iterator(0), dummy_dev,
+      //CHECK-NEXT:   dpct::device_pointer<index_t>(ptr));
+      auto ends = thrust::unique_by_key_copy(
+          thrust::device, sorted_indices_dev, sorted_indices_dev + numel,
+          thrust::make_counting_iterator(0), dummy_dev,
+          thrust::device_ptr<index_t>(ptr));
+    }
+  });
 }

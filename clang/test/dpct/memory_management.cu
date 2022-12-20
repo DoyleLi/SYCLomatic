@@ -1,6 +1,6 @@
 // FIXME
 // UNSUPPORTED: -windows-
-// RUN: dpct --format-range=none --usm-level=none -out-root %T/memory_management %s --cuda-include-path="%cuda-path/include" -output-file=memory_management_outputfile.txt -- -x cuda --cuda-host-only
+// RUN: dpct --no-dpcpp-extensions=device_info --format-range=none --usm-level=none -out-root %T/memory_management %s --cuda-include-path="%cuda-path/include" -output-file=memory_management_outputfile.txt -- -x cuda --cuda-host-only
 // RUN: FileCheck --match-full-lines --input-file %T/memory_management/memory_management.dp.cpp %s
 
 #include <cuda_runtime.h>
@@ -219,6 +219,11 @@ void testCommas() {
 
   // CHECK: d_A = (float *)dpct::dpct_malloc(size, size, size);
   cudaMallocPitch((void **)&d_A, &size, size, size);
+  int sz;
+  // CHECK: d_A = (float *)dpct::dpct_malloc(*((size_t *)&size), size, size);
+  cudaMallocPitch((void **)&d_A, (size_t *)&size, size, size);
+  // CHECK: d_A = (float *)dpct::dpct_malloc(*((size_t *)&sz), size, size);
+  cudaMallocPitch((void **)&d_A, (size_t *)&sz, size, size);
   // CHECK:/*
   // CHECK-NEXT:DPCT1003:{{[0-9]+}}: Migrated API does not return error code. (*, 0) is inserted. You may need to rewrite this code.
   // CHECK-NEXT:*/

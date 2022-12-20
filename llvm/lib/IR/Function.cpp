@@ -36,6 +36,7 @@
 #include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsARM.h"
 #include "llvm/IR/IntrinsicsBPF.h"
+#include "llvm/IR/IntrinsicsDirectX.h"
 #include "llvm/IR/IntrinsicsHexagon.h"
 #include "llvm/IR/IntrinsicsMips.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
@@ -62,6 +63,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/ModRef.h"
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -353,6 +355,8 @@ Function *Function::createWithDefaultAttr(FunctionType *Ty,
     B.addAttribute("frame-pointer", "all");
     break;
   }
+  if (M->getModuleFlag("function_return_thunk_extern"))
+    B.addAttribute(Attribute::FnRetThunkExtern);
   F->addFnAttrs(B);
   return F;
 }
@@ -724,6 +728,65 @@ void Function::copyAttributesFrom(const Function *Src) {
     setPrologueData(Src->getPrologueData());
 }
 
+MemoryEffects Function::getMemoryEffects() const {
+  return getAttributes().getMemoryEffects();
+}
+void Function::setMemoryEffects(MemoryEffects ME) {
+  addFnAttr(Attribute::getWithMemoryEffects(getContext(), ME));
+}
+
+/// Determine if the function does not access memory.
+bool Function::doesNotAccessMemory() const {
+  return getMemoryEffects().doesNotAccessMemory();
+}
+void Function::setDoesNotAccessMemory() {
+  setMemoryEffects(MemoryEffects::none());
+}
+
+/// Determine if the function does not access or only reads memory.
+bool Function::onlyReadsMemory() const {
+  return getMemoryEffects().onlyReadsMemory();
+}
+void Function::setOnlyReadsMemory() {
+  setMemoryEffects(getMemoryEffects() & MemoryEffects::readOnly());
+}
+
+/// Determine if the function does not access or only writes memory.
+bool Function::onlyWritesMemory() const {
+  return getMemoryEffects().onlyWritesMemory();
+}
+void Function::setOnlyWritesMemory() {
+  setMemoryEffects(getMemoryEffects() & MemoryEffects::writeOnly());
+}
+
+/// Determine if the call can access memmory only using pointers based
+/// on its arguments.
+bool Function::onlyAccessesArgMemory() const {
+  return getMemoryEffects().onlyAccessesArgPointees();
+}
+void Function::setOnlyAccessesArgMemory() {
+  setMemoryEffects(getMemoryEffects() & MemoryEffects::argMemOnly());
+}
+
+/// Determine if the function may only access memory that is
+///  inaccessible from the IR.
+bool Function::onlyAccessesInaccessibleMemory() const {
+  return getMemoryEffects().onlyAccessesInaccessibleMem();
+}
+void Function::setOnlyAccessesInaccessibleMemory() {
+  setMemoryEffects(getMemoryEffects() & MemoryEffects::inaccessibleMemOnly());
+}
+
+/// Determine if the function may only access memory that is
+///  either inaccessible from the IR or pointed to by its arguments.
+bool Function::onlyAccessesInaccessibleMemOrArgMem() const {
+  return getMemoryEffects().onlyAccessesInaccessibleOrArgMem();
+}
+void Function::setOnlyAccessesInaccessibleMemOrArgMem() {
+  setMemoryEffects(getMemoryEffects() &
+                   MemoryEffects::inaccessibleOrArgMemOnly());
+}
+
 /// Table of string intrinsic names indexed by enum value.
 static const char * const IntrinsicNameTable[] = {
   "not_intrinsic",
@@ -830,7 +893,7 @@ static std::string getMangledTypeStr(Type *Ty, bool &HasUnnamedType) {
         HasUnnamedType = true;
     } else {
       Result += "sl_";
-      for (auto Elem : STyp->elements())
+      for (auto *Elem : STyp->elements())
         Result += getMangledTypeStr(Elem, HasUnnamedType);
     }
     // Ensure nested structs are distinguishable.
@@ -927,25 +990,25 @@ std::string Intrinsic::getNameNoUnnamedTypes(ID Id, ArrayRef<Type *> Tys) {
 enum IIT_Info {
   // Common values should be encoded with 0-15.
   IIT_Done = 0,
-  IIT_I1   = 1,
-  IIT_I8   = 2,
-  IIT_I16  = 3,
-  IIT_I32  = 4,
-  IIT_I64  = 5,
-  IIT_F16  = 6,
-  IIT_F32  = 7,
-  IIT_F64  = 8,
-  IIT_V2   = 9,
-  IIT_V4   = 10,
-  IIT_V8   = 11,
-  IIT_V16  = 12,
-  IIT_V32  = 13,
-  IIT_PTR  = 14,
-  IIT_ARG  = 15,
+  IIT_I1 = 1,
+  IIT_I8 = 2,
+  IIT_I16 = 3,
+  IIT_I32 = 4,
+  IIT_I64 = 5,
+  IIT_F16 = 6,
+  IIT_F32 = 7,
+  IIT_F64 = 8,
+  IIT_V2 = 9,
+  IIT_V4 = 10,
+  IIT_V8 = 11,
+  IIT_V16 = 12,
+  IIT_V32 = 13,
+  IIT_PTR = 14,
+  IIT_ARG = 15,
 
   // Values from 16+ are only encodable with the inefficient encoding.
-  IIT_V64  = 16,
-  IIT_MMX  = 17,
+  IIT_V64 = 16,
+  IIT_MMX = 17,
   IIT_TOKEN = 18,
   IIT_METADATA = 19,
   IIT_EMPTYSTRUCT = 20,
@@ -956,7 +1019,7 @@ enum IIT_Info {
   IIT_EXTEND_ARG = 25,
   IIT_TRUNC_ARG = 26,
   IIT_ANYPTR = 27,
-  IIT_V1   = 28,
+  IIT_V1 = 28,
   IIT_VARARG = 29,
   IIT_HALF_VEC_ARG = 30,
   IIT_SAME_VEC_WIDTH_ARG = 31,
@@ -979,12 +1042,14 @@ enum IIT_Info {
   IIT_BF16 = 48,
   IIT_STRUCT9 = 49,
   IIT_V256 = 50,
-  IIT_AMX  = 51,
+  IIT_AMX = 51,
   IIT_PPCF128 = 52,
   IIT_V3 = 53,
   IIT_EXTERNREF = 54,
   IIT_FUNCREF = 55,
   IIT_ANYPTR_TO_ELT = 56,
+  IIT_I2 = 57,
+  IIT_I4 = 58,
 };
 
 static void DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
@@ -1036,6 +1101,12 @@ static void DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
     return;
   case IIT_I1:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Integer, 1));
+    return;
+  case IIT_I2:
+    OutputTable.push_back(IITDescriptor::get(IITDescriptor::Integer, 2));
+    return;
+  case IIT_I4:
+    OutputTable.push_back(IITDescriptor::get(IITDescriptor::Integer, 4));
     return;
   case IIT_I8:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Integer, 8));
@@ -1175,13 +1246,13 @@ static void DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
   case IIT_EMPTYSTRUCT:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Struct, 0));
     return;
-  case IIT_STRUCT9: ++StructElts; LLVM_FALLTHROUGH;
-  case IIT_STRUCT8: ++StructElts; LLVM_FALLTHROUGH;
-  case IIT_STRUCT7: ++StructElts; LLVM_FALLTHROUGH;
-  case IIT_STRUCT6: ++StructElts; LLVM_FALLTHROUGH;
-  case IIT_STRUCT5: ++StructElts; LLVM_FALLTHROUGH;
-  case IIT_STRUCT4: ++StructElts; LLVM_FALLTHROUGH;
-  case IIT_STRUCT3: ++StructElts; LLVM_FALLTHROUGH;
+  case IIT_STRUCT9: ++StructElts; [[fallthrough]];
+  case IIT_STRUCT8: ++StructElts; [[fallthrough]];
+  case IIT_STRUCT7: ++StructElts; [[fallthrough]];
+  case IIT_STRUCT6: ++StructElts; [[fallthrough]];
+  case IIT_STRUCT5: ++StructElts; [[fallthrough]];
+  case IIT_STRUCT4: ++StructElts; [[fallthrough]];
+  case IIT_STRUCT3: ++StructElts; [[fallthrough]];
   case IIT_STRUCT2: {
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Struct,StructElts));
 
@@ -1412,16 +1483,15 @@ Function *Intrinsic::getDeclaration(Module *M, ID id, ArrayRef<Type*> Tys) {
   // because intrinsics must be a specific type.
   auto *FT = getType(M->getContext(), id, Tys);
   return cast<Function>(
-      M->getOrInsertFunction(Tys.empty() ? getName(id)
-                                         : getName(id, Tys, M, FT),
-                             getType(M->getContext(), id, Tys))
+      M->getOrInsertFunction(
+           Tys.empty() ? getName(id) : getName(id, Tys, M, FT), FT)
           .getCallee());
 }
 
-// This defines the "Intrinsic::getIntrinsicForGCCBuiltin()" method.
-#define GET_LLVM_INTRINSIC_FOR_GCC_BUILTIN
+// This defines the "Intrinsic::getIntrinsicForClangBuiltin()" method.
+#define GET_LLVM_INTRINSIC_FOR_CLANG_BUILTIN
 #include "llvm/IR/IntrinsicImpl.inc"
-#undef GET_LLVM_INTRINSIC_FOR_GCC_BUILTIN
+#undef GET_LLVM_INTRINSIC_FOR_CLANG_BUILTIN
 
 // This defines the "Intrinsic::getIntrinsicForMSBuiltin()" method.
 #define GET_LLVM_INTRINSIC_FOR_MS_BUILTIN
@@ -1495,6 +1565,9 @@ static bool matchIntrinsicType(
       while (Infos.front().Kind == IITDescriptor::Pointer ||
              Infos.front().Kind == IITDescriptor::Vector)
         Infos = Infos.slice(1);
+      assert((Infos.front().Kind != IITDescriptor::Argument ||
+              Infos.front().getArgumentKind() == IITDescriptor::AK_MatchType) &&
+             "Unsupported polymorphic pointer type with opaque pointer");
       Infos = Infos.slice(1);
       return false;
     }
@@ -1714,7 +1787,7 @@ Intrinsic::matchIntrinsicSignature(FunctionType *FTy,
 
   unsigned NumDeferredReturnChecks = DeferredChecks.size();
 
-  for (auto Ty : FTy->params())
+  for (auto *Ty : FTy->params())
     if (matchIntrinsicType(Ty, Infos, ArgTys, DeferredChecks, false))
       return MatchIntrinsicTypes_NoMatchArg;
 
@@ -1773,14 +1846,14 @@ bool Intrinsic::getIntrinsicSignature(Function *F,
 Optional<Function *> Intrinsic::remangleIntrinsicFunction(Function *F) {
   SmallVector<Type *, 4> ArgTys;
   if (!getIntrinsicSignature(F, ArgTys))
-    return None;
+    return std::nullopt;
 
   Intrinsic::ID ID = F->getIntrinsicID();
   StringRef Name = F->getName();
   std::string WantedName =
       Intrinsic::getName(ID, ArgTys, F->getParent(), F->getFunctionType());
   if (Name == WantedName)
-    return None;
+    return std::nullopt;
 
   Function *NewDecl = [&] {
     if (auto *ExistingGV = F->getParent()->getNamedValue(WantedName)) {
@@ -1960,7 +2033,7 @@ void Function::setEntryCount(ProfileCount Count,
                              const DenseSet<GlobalValue::GUID> *S) {
 #if !defined(NDEBUG)
   auto PrevCount = getEntryCount();
-  assert(!PrevCount.hasValue() || PrevCount->getType() == Count.getType());
+  assert(!PrevCount || PrevCount->getType() == Count.getType());
 #endif
 
   auto ImportGUIDs = getImportGUIDs();
@@ -1988,7 +2061,7 @@ Optional<ProfileCount> Function::getEntryCount(bool AllowSynthetic) const {
         // A value of -1 is used for SamplePGO when there were no samples.
         // Treat this the same as unknown.
         if (Count == (uint64_t)-1)
-          return None;
+          return std::nullopt;
         return ProfileCount(Count, PCT_Real);
       } else if (AllowSynthetic &&
                  MDS->getString().equals("synthetic_function_entry_count")) {
@@ -1997,7 +2070,7 @@ Optional<ProfileCount> Function::getEntryCount(bool AllowSynthetic) const {
         return ProfileCount(Count, PCT_Synthetic);
       }
     }
-  return None;
+  return std::nullopt;
 }
 
 DenseSet<GlobalValue::GUID> Function::getImportGUIDs() const {
@@ -2026,7 +2099,7 @@ Optional<StringRef> Function::getSectionPrefix() const {
            "Metadata not match");
     return cast<MDString>(MD->getOperand(1))->getString();
   }
-  return None;
+  return std::nullopt;
 }
 
 bool Function::nullPointerIsDefined() const {

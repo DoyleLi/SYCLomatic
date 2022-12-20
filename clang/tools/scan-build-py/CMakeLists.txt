@@ -88,8 +88,8 @@ foreach(lib ${LibScanbuild})
                        ${CMAKE_BINARY_DIR}/lib/libscanbuild/
                      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/lib/libscanbuild/${lib})
   list(APPEND Depends ${CMAKE_BINARY_DIR}/lib/libscanbuild/${lib})
-  install(PROGRAMS lib/libscanbuild/${lib}
-          DESTINATION lib/libscanbuild
+  install(FILES lib/libscanbuild/${lib}
+          DESTINATION lib${CLANG_LIBDIR_SUFFIX}/libscanbuild
           COMPONENT scan-build-py)
 # SYCLomatic_CUSTOMIZATION begin
   list(APPEND dpct-intercept-build-dependends ${CMAKE_BINARY_DIR}/lib/libscanbuild/${lib})
@@ -112,8 +112,8 @@ foreach(resource ${LibScanbuildResources})
                        ${CMAKE_BINARY_DIR}/lib/libscanbuild/resources
                      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/lib/libscanbuild/resources/${resource})
   list(APPEND Depends ${CMAKE_BINARY_DIR}/lib/libscanbuild/resources/${resource})
-  install(PROGRAMS lib/libscanbuild/resources/${resource}
-          DESTINATION lib/libscanbuild/resources
+  install(FILES lib/libscanbuild/resources/${resource}
+          DESTINATION lib${CLANG_LIBDIR_SUFFIX}/libscanbuild/resources
           COMPONENT scan-build-py)
 endforeach()
 
@@ -128,8 +128,8 @@ foreach(lib ${LibEar})
                        ${CMAKE_BINARY_DIR}/lib/libear/
                      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/lib/libear/${lib})
   list(APPEND Depends ${CMAKE_BINARY_DIR}/lib/libear/${lib})
-  install(PROGRAMS lib/libear/${lib}
-          DESTINATION lib/libear
+  install(FILES lib/libear/${lib}
+          DESTINATION lib${CLANG_LIBDIR_SUFFIX}/libear
           COMPONENT scan-build-py)
 endforeach()
 
@@ -145,9 +145,16 @@ if (SYCLomatic_CUSTOMIZATION)
     )
     target_include_directories(ear PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/lib/libear/)
-    target_link_libraries(ear PRIVATE
-      "-ldl -lpthread -shared -Wl,-soname,libear.so")
+
+    set(LIBEAR_LINKER_FLAGS "-ldl -lpthread -shared -Wl,-soname,libear.so")
+    check_c_compiler_flag("-static-intel" C_SUPPORTS_STATIC_INTEL_FLAG)
+    if( C_SUPPORTS_STATIC_INTEL_FLAG )
+      set(LIBEAR_LINKER_FLAGS "${LIBEAR_LINKER_FLAGS} -static-intel")
+    endif()
+
+    target_link_libraries(ear PRIVATE ${LIBEAR_LINKER_FLAGS})
     target_compile_options(ear PRIVATE "-std=c99")
+
     install(TARGETS ear
             LIBRARY
             DESTINATION lib/libear

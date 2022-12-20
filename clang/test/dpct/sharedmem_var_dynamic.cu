@@ -41,7 +41,7 @@ void testTemplate(){
 
   // CHECK: dpct::get_default_queue().submit(
   // CHECK-NEXT:   [&](sycl::handler &cgh) {
-  // CHECK-NEXT:     sycl::accessor<uint8_t, 1, sycl::access_mode::read_write, sycl::access::target::local> dpct_local_acc_ct1(sycl::range<1>(mem_size), cgh);
+  // CHECK-NEXT:     sycl::local_accessor<uint8_t, 1> dpct_local_acc_ct1(sycl::range<1>(mem_size), cgh);
   // CHECK-NEXT:     dpct::access_wrapper<T *> d_d_acc_ct0(d_d, cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:     cgh.parallel_for<dpct_kernel_name<class templateReverse_{{[a-f0-9]+}}, T>>(
@@ -64,7 +64,7 @@ int main(void) {
   cudaMemcpy(d_d, a, mem_size, cudaMemcpyHostToDevice);
   // CHECK: q_ct1.submit(
   // CHECK-NEXT:   [&](sycl::handler &cgh) {
-  // CHECK-NEXT:     sycl::accessor<uint8_t, 1, sycl::access_mode::read_write, sycl::access::target::local> dpct_local_acc_ct1(sycl::range<1>(mem_size), cgh);
+  // CHECK-NEXT:     sycl::local_accessor<uint8_t, 1> dpct_local_acc_ct1(sycl::range<1>(mem_size), cgh);
   // CHECK-NEXT:     auto d_d_acc_ct0 = dpct::get_access(d_d, cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:     cgh.parallel_for<dpct_kernel_name<class staticReverse_{{[a-f0-9]+}}>>(
@@ -81,7 +81,7 @@ int main(void) {
   // CHECK-NEXT:     /*
   // CHECK-NEXT:     DPCT1083:{{[0-9]+}}: The size of local memory in the migrated code may be different from the original code. Check that the allocated memory size in the migrated code is correct.
   // CHECK-NEXT:     */
-  // CHECK-NEXT:     sycl::accessor<uint8_t, 1, sycl::access_mode::read_write, sycl::access::target::local> dpct_local_acc_ct1(sycl::range<1>(sizeof(int)), cgh);
+  // CHECK-NEXT:     sycl::local_accessor<uint8_t, 1> dpct_local_acc_ct1(sycl::range<1>(sizeof(int)), cgh);
   // CHECK-NEXT:     auto d_d_acc_ct0 = dpct::get_access(d_d, cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:     cgh.parallel_for<dpct_kernel_name<class staticReverse_{{[a-f0-9]+}}>>(
@@ -94,7 +94,7 @@ int main(void) {
 
   // CHECK: q_ct1.submit(
   // CHECK-NEXT:   [&](sycl::handler &cgh) {
-  // CHECK-NEXT:     sycl::accessor<uint8_t, 1, sycl::access_mode::read_write, sycl::access::target::local> dpct_local_acc_ct1(sycl::range<1>(4), cgh);
+  // CHECK-NEXT:     sycl::local_accessor<uint8_t, 1> dpct_local_acc_ct1(sycl::range<1>(4), cgh);
   // CHECK-NEXT:     auto d_d_acc_ct0 = dpct::get_access(d_d, cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:     cgh.parallel_for<dpct_kernel_name<class templateReverse_{{[a-f0-9]+}}, int>>(
@@ -130,3 +130,46 @@ __global__ void foo_2() {
 __global__ void foo_3() {
   extern __shared__ int shad_mem_3[][2][3];
 }
+
+// CHECK: #ifdef DPCT_COMPATIBILITY_TEMP
+// CHECK-EMPTY: 
+// CHECK: #endif
+#ifdef __CUDA_ARCH__
+__shared__ extern char cuda_shared_memory[];
+#endif
+
+// CHECK: static char *Env_cuda_shared_memory(char *cuda_shared_memory) {
+// CHECK-EMPTY: 
+// CHECK: return cuda_shared_memory;
+// CHECK-EMPTY: 
+// CHECK: }
+// CHECK: static char *Env_cuda_shared_memory_host_ct{{[0-9]+}}() {
+// CHECK-EMPTY: 
+// CHECK: return (char *)0;
+// CHECK-EMPTY: 
+// CHECK: }
+__host__ __device__ static char *Env_cuda_shared_memory() {
+#ifdef __CUDA_ARCH__
+  return cuda_shared_memory;
+#else
+  return (char *)0;
+#endif
+}
+
+// CHECK: void foo_4_g(char *cuda_shared_memory) { char *p = Env_cuda_shared_memory(cuda_shared_memory); }
+__global__ void foo_4_g() { char *p = Env_cuda_shared_memory(); }
+
+// CHECK: void foo_4_h() { char *p = Env_cuda_shared_memory_host_ct{{[0-9]+}}(); }
+__host__ void foo_4_h() { char *p = Env_cuda_shared_memory(); }
+
+// CHECK: void call_foo4() { dpct::get_default_queue().submit(
+// CHECK-NEXT:  [&](sycl::handler &cgh) {
+// CHECK-NEXT:    sycl::local_accessor<char, 1> cuda_shared_memory_acc_ct1(sycl::range<1>(10), cgh);
+// CHECK-EMPTY: 
+// CHECK-NEXT:    cgh.parallel_for<dpct_kernel_name<class foo_4_g_{{[a-f0-9]+}}>>(
+// CHECK-NEXT:      sycl::nd_range<3>(sycl::range<3>(1, 1, 16) * sycl::range<3>(1, 1, 64), sycl::range<3>(1, 1, 64)), 
+// CHECK-NEXT:      [=](sycl::nd_item<3> item_ct1) {
+// CHECK-NEXT:        foo_4_g(cuda_shared_memory_acc_ct1.get_pointer());
+// CHECK-NEXT:      });
+// CHECK-NEXT:  }); }
+void call_foo4() { foo_4_g<<<16, 64, 10>>>(); }

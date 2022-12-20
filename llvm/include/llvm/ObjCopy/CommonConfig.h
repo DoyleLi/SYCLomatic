@@ -118,7 +118,7 @@ public:
   Optional<StringRef> getName() const {
     if (!R && !G)
       return Name;
-    return None;
+    return std::nullopt;
   }
   bool operator==(StringRef S) const {
     return R ? R->match(S) : G ? G->match(S) : Name == S;
@@ -241,6 +241,7 @@ struct CommonConfig {
   StringMap<SectionRename> SectionsToRename;
   StringMap<uint64_t> SetSectionAlignment;
   StringMap<SectionFlagsUpdate> SetSectionFlags;
+  StringMap<uint64_t> SetSectionType;
   StringMap<StringRef> SymbolsToRename;
 
   // Symbol info specified by --add-symbol option.

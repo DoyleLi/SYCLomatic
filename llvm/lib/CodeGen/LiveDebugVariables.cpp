@@ -59,6 +59,7 @@
 #include <cassert>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 using namespace llvm;
@@ -286,7 +287,7 @@ class LDVImpl;
 class UserValue {
   const DILocalVariable *Variable; ///< The debug info variable we are part of.
   /// The part of the variable we describe.
-  const Optional<DIExpression::FragmentInfo> Fragment;
+  const std::optional<DIExpression::FragmentInfo> Fragment;
   DebugLoc dl;            ///< The debug location for the variable. This is
                           ///< used by dwarf writer to find lexical scope.
   UserValue *leader;      ///< Equivalence class leader.
@@ -319,7 +320,7 @@ class UserValue {
 public:
   /// Create a new UserValue.
   UserValue(const DILocalVariable *var,
-            Optional<DIExpression::FragmentInfo> Fragment, DebugLoc L,
+            std::optional<DIExpression::FragmentInfo> Fragment, DebugLoc L,
             LocMap::Allocator &alloc)
       : Variable(var), Fragment(Fragment), dl(std::move(L)), leader(this),
         locInts(alloc) {}
@@ -582,7 +583,7 @@ class LDVImpl {
 
   /// Find or create a UserValue.
   UserValue *getUserValue(const DILocalVariable *Var,
-                          Optional<DIExpression::FragmentInfo> Fragment,
+                          std::optional<DIExpression::FragmentInfo> Fragment,
                           const DebugLoc &DL);
 
   /// Find the EC leader for VirtReg or null.
@@ -768,9 +769,10 @@ void UserValue::mapVirtRegs(LDVImpl *LDV) {
       LDV->mapVirtReg(locations[i].getReg(), this);
 }
 
-UserValue *LDVImpl::getUserValue(const DILocalVariable *Var,
-                                 Optional<DIExpression::FragmentInfo> Fragment,
-                                 const DebugLoc &DL) {
+UserValue *
+LDVImpl::getUserValue(const DILocalVariable *Var,
+                      std::optional<DIExpression::FragmentInfo> Fragment,
+                      const DebugLoc &DL) {
   // FIXME: Handle partially overlapping fragments. See
   // https://reviews.llvm.org/D70121#1849741.
   DebugVariable ID(Var, Fragment, DL->getInlinedAt());
@@ -972,7 +974,7 @@ void UserValue::extendDef(
     if (Segment->end < Stop) {
       Stop = Segment->end;
       Kills = {Stop, {LII.first}};
-    } else if (Segment->end == Stop && Kills.hasValue()) {
+    } else if (Segment->end == Stop && Kills) {
       // If multiple locations end at the same place, track all of them in
       // Kills.
       Kills->second.push_back(LII.first);
@@ -985,7 +987,7 @@ void UserValue::extendDef(
     Start = Start.getNextSlot();
     if (I.value() != DbgValue || I.stop() != Start) {
       // Clear `Kills`, as we have a new def available.
-      Kills = None;
+      Kills = std::nullopt;
       return;
     }
     // This is a one-slot placeholder. Just skip it.
@@ -996,7 +998,7 @@ void UserValue::extendDef(
   if (I.valid() && I.start() < Stop) {
     Stop = I.start();
     // Clear `Kills`, as we have a new def available.
-    Kills = None;
+    Kills = std::nullopt;
   }
 
   if (Start < Stop) {
@@ -1850,16 +1852,33 @@ void LDVImpl::emitDebugValues(VirtRegMap *VRM) {
       const TargetRegisterClass *TRC = MRI.getRegClass(Reg);
       unsigned SpillSize, SpillOffset;
 
-      // Test whether this location is legal with the given subreg.
+      unsigned regSizeInBits = TRI->getRegSizeInBits(*TRC);
+      if (SubReg)
+        regSizeInBits = TRI->getSubRegIdxSize(SubReg);
+
+      // Test whether this location is legal with the given subreg. If the
+      // subregister has a nonzero offset, drop this location, it's too complex
+      // to describe. (TODO: future work).
       bool Success =
           TII->getStackSlotRange(TRC, SubReg, SpillSize, SpillOffset, *MF);
 
-      if (Success) {
+      if (Success && SpillOffset == 0) {
         auto Builder = BuildMI(*OrigMBB, OrigMBB->begin(), DebugLoc(),
                                TII->get(TargetOpcode::DBG_PHI));
         Builder.addFrameIndex(VRM->getStackSlot(Reg));
         Builder.addImm(InstNum);
+        // Record how large the original value is. The stack slot might be
+        // merged and altered during optimisation, but we will want to know how
+        // large the value is, at this DBG_PHI.
+        Builder.addImm(regSizeInBits);
       }
+
+      LLVM_DEBUG(
+      if (SpillOffset != 0) {
+        dbgs() << "DBG_PHI for Vreg " << Reg << " subreg " << SubReg <<
+                  " has nonzero offset\n";
+      }
+      );
     }
     // If there was no mapping for a value ID, it's optimized out. Create no
     // DBG_PHI, and any variables using this value will become optimized out.
@@ -1874,7 +1893,7 @@ void LDVImpl::emitDebugValues(VirtRegMap *VRM) {
   // insert position, insert all instructions at the same SlotIdx. They are
   // guaranteed to appear in-sequence in StashedDebugInstrs because we insert
   // them in order.
-  for (auto StashIt = StashedDebugInstrs.begin();
+  for (auto *StashIt = StashedDebugInstrs.begin();
        StashIt != StashedDebugInstrs.end(); ++StashIt) {
     SlotIndex Idx = StashIt->Idx;
     MachineBasicBlock *MBB = StashIt->MBB;

@@ -14,14 +14,6 @@ class StackCoreScriptedProcesTestCase(TestBase):
 
     NO_DEBUG_INFO_TESTCASE = True
 
-    mydir = TestBase.compute_mydir(__file__)
-
-    def setUp(self):
-        TestBase.setUp(self)
-
-    def tearDown(self):
-        TestBase.tearDown(self)
-
     def create_stack_skinny_corefile(self, file):
         self.build()
         target, process, thread, _ = lldbutil.run_to_source_breakpoint(self, "// break here",
@@ -40,6 +32,7 @@ class StackCoreScriptedProcesTestCase(TestBase):
 
     @skipUnlessDarwin
     @skipIfOutOfTreeDebugserver
+    @skipIfRemote
     def test_launch_scripted_process_stack_frames(self):
         """Test that we can launch an lldb scripted process from the command
         line, check its process ID and read string from memory."""

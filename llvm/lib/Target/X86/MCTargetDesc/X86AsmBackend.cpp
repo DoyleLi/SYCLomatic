@@ -584,8 +584,7 @@ void X86AsmBackend::emitInstructionEnd(MCObjectStreamer &OS, const MCInst &Inst)
 
   // Update the maximum alignment on the current section if necessary.
   MCSection *Sec = OS.getCurrentSectionOnly();
-  if (AlignBoundary.value() > Sec->getAlignment())
-    Sec->setAlignment(AlignBoundary);
+  Sec->ensureMinAlignment(AlignBoundary);
 }
 
 Optional<MCFixupKind> X86AsmBackend::getFixupKind(StringRef Name) const {
@@ -614,7 +613,7 @@ Optional<MCFixupKind> X86AsmBackend::getFixupKind(StringRef Name) const {
                  .Default(-1u);
     }
     if (Type == -1u)
-      return None;
+      return std::nullopt;
     return static_cast<MCFixupKind>(FirstLiteralRelocationKind + Type);
   }
   return MCAsmBackend::getFixupKind(Name);
@@ -1377,7 +1376,7 @@ public:
       default:
         // Any other CFI directives indicate a frame that we aren't prepared
         // to represent via compact unwind, so just bail out.
-        return 0;
+        return CU::UNWIND_MODE_DWARF;
       case MCCFIInstruction::OpDefCfaRegister: {
         // Defines a frame pointer. E.g.
         //
@@ -1391,7 +1390,7 @@ public:
         // generate a compact unwinding representation, so bail out.
         if (*MRI.getLLVMRegNum(Inst.getRegister(), true) !=
             (Is64Bit ? X86::RBP : X86::EBP))
-          return 0;
+          return CU::UNWIND_MODE_DWARF;
 
         // Reset the counts.
         memset(SavedRegs, 0, sizeof(SavedRegs));

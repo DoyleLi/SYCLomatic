@@ -77,8 +77,8 @@ private:
   // Constructors are private to force people to use the create static
   // functions.
   UnwindLocation(Location K)
-      : Kind(K), RegNum(InvalidRegisterNumber), Offset(0), AddrSpace(None),
-        Dereference(false) {}
+      : Kind(K), RegNum(InvalidRegisterNumber), Offset(0),
+        AddrSpace(std::nullopt), Dereference(false) {}
 
   UnwindLocation(Location K, uint32_t Reg, int32_t Off, Optional<uint32_t> AS,
                  bool Deref)
@@ -117,10 +117,10 @@ public:
   /// false.
   static UnwindLocation
   createIsRegisterPlusOffset(uint32_t Reg, int32_t Off,
-                             Optional<uint32_t> AddrSpace = None);
+                             Optional<uint32_t> AddrSpace = std::nullopt);
   static UnwindLocation
   createAtRegisterPlusOffset(uint32_t Reg, int32_t Off,
-                             Optional<uint32_t> AddrSpace = None);
+                             Optional<uint32_t> AddrSpace = std::nullopt);
   /// Create a location whose value is the result of evaluating a DWARF
   /// expression. This allows complex expressions to be evaluated in order to
   /// unwind a register or CFA value.
@@ -132,7 +132,7 @@ public:
   uint32_t getRegister() const { return RegNum; }
   int32_t getOffset() const { return Offset; }
   uint32_t getAddressSpace() const {
-    assert(Kind == RegPlusOffset && AddrSpace.hasValue());
+    assert(Kind == RegPlusOffset && AddrSpace);
     return *AddrSpace;
   }
   int32_t getConstant() const { return Offset; }
@@ -190,7 +190,7 @@ public:
   Optional<UnwindLocation> getRegisterLocation(uint32_t RegNum) const {
     auto Pos = Locations.find(RegNum);
     if (Pos == Locations.end())
-      return llvm::None;
+      return std::nullopt;
     return Pos->second;
   }
 
@@ -261,7 +261,7 @@ public:
   UnwindRow() : CFAValue(UnwindLocation::createUnspecified()) {}
 
   /// Returns true if the address is valid in this object.
-  bool hasAddress() const { return Address.hasValue(); }
+  bool hasAddress() const { return Address.has_value(); }
 
   /// Get the address for this row.
   ///

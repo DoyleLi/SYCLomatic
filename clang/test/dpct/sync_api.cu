@@ -3,7 +3,7 @@
 // RUN: dpct --format-range=none -out-root %T/sync_api %s --cuda-include-path="%cuda-path/include" --use-experimental-features=nd_range_barrier,logical-group -- -x cuda --cuda-host-only -std=c++14
 // RUN: FileCheck %s --match-full-lines --input-file %T/sync_api/sync_api.dp.cpp
 
-// CHECK: #include <CL/sycl.hpp>
+// CHECK: #include <sycl/sycl.hpp>
 // CHECK-NEXT: #include <dpct/dpct.hpp>
 #include "cooperative_groups.h"
 namespace cg = cooperative_groups;
@@ -176,9 +176,24 @@ __global__ void foo2() {
   foo1(tb, tbt32);
 }
 
+__global__ void foo_tile32() {
+// CHECK: auto ttb = item_ct1.get_group();
+// CHECK-NEXT: sycl::sub_group tile32 = item_ct1.get_sub_group();
+// CHECK-NEXT: double rowThreadSum = 0.0;
+// CHECK-NEXT: int offset= 32;
+// CHECK-NEXT: tile32.shuffle_down(rowThreadSum, offset);
+// CHECK-NEXT: item_ct1.get_sub_group().get_local_linear_id();
+  cg::thread_block ttb = cg::this_thread_block();
+  cg::thread_block_tile<32> tile32 = cg::tiled_partition<32>(ttb);
+  double rowThreadSum = 0.0;
+  int offset= 32;
+  tile32.shfl_down(rowThreadSum, offset);
+  tile32.thread_rank();
+}
+
 int foo3() {
 //CHECK: dpct::get_default_queue().parallel_for(
-//CHECK-NEXT:   sycl::nd_range<3>(sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)), 
+//CHECK-NEXT:   sycl::nd_range<3>(sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)),
 //CHECK-NEXT:   [=](sycl::nd_item<3> item_ct1) {{\[\[}}intel::reqd_sub_group_size(32){{\]\]}} {
 //CHECK-NEXT:     foo2(item_ct1);
 //CHECK-NEXT:   });

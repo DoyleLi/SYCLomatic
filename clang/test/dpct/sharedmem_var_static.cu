@@ -10,9 +10,9 @@
 
 class TestObject{
 public:
-  // CHECK: static void run(int *in, int *out, sycl::nd_item<3> item_ct1, int *a0) {
+  // CHECK: static void run(int *in, int *out, sycl::nd_item<3> item_ct1, int &a0) {
   // CHECK-NEXT:  // the size of s is static
-  // CHECK-NEXT:  *a0 = item_ct1.get_local_id(2);
+  // CHECK-NEXT:  a0 = item_ct1.get_local_id(2);
   __device__ static void run(int *in, int *out) {
     __shared__ int a0; // the size of s is static
     a0 = threadIdx.x;
@@ -20,9 +20,9 @@ public:
   __device__ void test() {}
 };
 
-// CHECK: void memberAcc(TestObject *s) {
+// CHECK: void memberAcc(TestObject &s) {
 // CHECK-NEXT: // the size of s is static
-// CHECK-NEXT: s->test();
+// CHECK-NEXT: s.test();
 // CHECK-NEXT: }
 __global__ void memberAcc() {
   __shared__ TestObject s; // the size of s is static
@@ -41,7 +41,7 @@ __global__ void nonTypeTemplateReverse(int *d, int n) {
   }
 }
 
-// CHECK: void staticReverse(int *d, int n, sycl::nd_item<3> [[ITEM:item_ct1]], int *a0, int *s) {
+// CHECK: void staticReverse(int *d, int n, sycl::nd_item<3> [[ITEM:item_ct1]], int &a0, int *s) {
 __global__ void staticReverse(int *d, int n) {
   const int size = 64;
   // CHECK:  // the size of s is static
@@ -56,8 +56,8 @@ __global__ void staticReverse(int *d, int n) {
 
 // CHECK: template<typename TData>
 // CHECK-NEXT: void templateReverse(TData *d, TData n, sycl::nd_item<3> [[ITEM:item_ct1]],
-// CHECK-NEXT:                      sycl::accessor<TData, 2, sycl::access_mode::read_write, sycl::access::target::local> s,
-// CHECK-NEXT:                      sycl::accessor<TData, 3, sycl::access_mode::read_write, sycl::access::target::local> s3) {
+// CHECK-NEXT:                      sycl::local_accessor<TData, 2> s,
+// CHECK-NEXT:                      sycl::local_accessor<TData, 3> s3) {
 template<typename TData>
 __global__ void templateReverse(TData *d, TData n) {
   const int size = 32;
@@ -82,8 +82,23 @@ void testTemplate() {
 
   // CHECK: dpct::get_default_queue().submit(
   // CHECK-NEXT:   [&](sycl::handler &cgh) {
-  // CHECK-NEXT:     sycl::accessor<T, 2, sycl::access_mode::read_write, sycl::access::target::local> s_acc_ct1(sycl::range<2>(64/*size * 2*/, 128/*size * 4*/), cgh);
-  // CHECK-NEXT:     sycl::accessor<T, 3, sycl::access_mode::read_write, sycl::access::target::local> s3_acc_ct1(sycl::range<3>(64/*size * 2*/, 128/*size * 4*/, 32/*size*/), cgh);
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size * 2' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size * 4' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     sycl::local_accessor<T, 2> s_acc_ct1(sycl::range<2>(64/*size * 2*/, 128/*size * 4*/), cgh);
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size * 2' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size * 4' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     sycl::local_accessor<T, 3> s3_acc_ct1(sycl::range<3>(64/*size * 2*/, 128/*size * 4*/, 32/*size*/), cgh);
   // CHECK-NEXT:     dpct::access_wrapper<T *> d_d_acc_ct0(d_d, cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:     cgh.parallel_for<dpct_kernel_name<class templateReverse_{{[a-f0-9]+}}, T>>(
@@ -107,25 +122,28 @@ int main(void) {
 
   // CHECK: q_ct1.submit(
   // CHECK-NEXT:    [&](sycl::handler &cgh) {
-  // CHECK-NEXT:      sycl::accessor<TestObject, 0, sycl::access_mode::read_write, sycl::access::target::local> s_acc_ct1(cgh);
+  // CHECK-NEXT:      sycl::local_accessor<TestObject, 0> s_acc_ct1(cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:       cgh.parallel_for<dpct_kernel_name<class memberAcc_{{[a-f0-9]+}}>>(
   // CHECK-NEXT:         sycl::nd_range<3>(sycl::range<3>(1, 1, 1), sycl::range<3>(1, 1, 1)),
   // CHECK-NEXT:         [=](sycl::nd_item<3> item_ct1) {
-  // CHECK-NEXT:           memberAcc(s_acc_ct1.get_pointer());
+  // CHECK-NEXT:           memberAcc(s_acc_ct1);
   // CHECK-NEXT:         });
   // CHECK-NEXT:     });
   memberAcc<<<1, 1>>>();
   // CHECK: q_ct1.submit(
   // CHECK-NEXT:   [&](sycl::handler &cgh) {
-  // CHECK-NEXT:     sycl::accessor<int, 0, sycl::access_mode::read_write, sycl::access::target::local> a0_acc_ct1(cgh);
-  // CHECK-NEXT:     sycl::accessor<int, 1, sycl::access_mode::read_write, sycl::access::target::local> s_acc_ct1(sycl::range<1>(64/*size*/), cgh);
+  // CHECK-NEXT:     sycl::local_accessor<int, 0> a0_acc_ct1(cgh);
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     sycl::local_accessor<int, 1> s_acc_ct1(sycl::range<1>(64/*size*/), cgh);
   // CHECK-NEXT:     auto d_d_acc_ct0 = dpct::get_access(d_d, cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:     cgh.parallel_for<dpct_kernel_name<class staticReverse_{{[a-f0-9]+}}>>(
   // CHECK-NEXT:       sycl::nd_range<3>(sycl::range<3>(1, 1, n), sycl::range<3>(1, 1, n)),
   // CHECK-NEXT:       [=](sycl::nd_item<3> item_ct1) {
-  // CHECK-NEXT:         staticReverse((int *)(&d_d_acc_ct0[0]), n, item_ct1, a0_acc_ct1.get_pointer(), s_acc_ct1.get_pointer());
+  // CHECK-NEXT:         staticReverse((int *)(&d_d_acc_ct0[0]), n, item_ct1, a0_acc_ct1, s_acc_ct1.get_pointer());
   // CHECK-NEXT:       });
   // CHECK-NEXT:   });
   staticReverse<<<1, n>>>(d_d, n);
@@ -133,8 +151,23 @@ int main(void) {
 
   // CHECK: q_ct1.submit(
   // CHECK-NEXT:   [&](sycl::handler &cgh) {
-  // CHECK-NEXT:     sycl::accessor<int, 2, sycl::access_mode::read_write, sycl::access::target::local> s_acc_ct1(sycl::range<2>(64/*size * 2*/, 128/*size * 4*/), cgh);
-  // CHECK-NEXT:     sycl::accessor<int, 3, sycl::access_mode::read_write, sycl::access::target::local> s3_acc_ct1(sycl::range<3>(64/*size * 2*/, 128/*size * 4*/, 32/*size*/), cgh);
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size * 2' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size * 4' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     sycl::local_accessor<int, 2> s_acc_ct1(sycl::range<2>(64/*size * 2*/, 128/*size * 4*/), cgh);
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size * 2' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size * 4' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     /*
+  // CHECK-NEXT:     DPCT1101:{{[0-9]+}}: 'size' expression was replaced with a value. Modify the code to use original expression, provided in comments, if it is correct.
+  // CHECK-NEXT:     */
+  // CHECK-NEXT:     sycl::local_accessor<int, 3> s3_acc_ct1(sycl::range<3>(64/*size * 2*/, 128/*size * 4*/, 32/*size*/), cgh);
   // CHECK-NEXT:     auto d_d_acc_ct0 = dpct::get_access(d_d, cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:     cgh.parallel_for<dpct_kernel_name<class templateReverse_{{[a-f0-9]+}}, int>>(
@@ -147,7 +180,7 @@ int main(void) {
 
   // CHECK: q_ct1.submit(
   // CHECK-NEXT:   [&](sycl::handler &cgh) {
-  // CHECK-NEXT:     sycl::accessor<std::complex<int>, 1, sycl::access_mode::read_write, sycl::access::target::local> s_acc_ct1(sycl::range<1>(2*SIZE*SIZE), cgh);
+  // CHECK-NEXT:     sycl::local_accessor<std::complex<int>, 1> s_acc_ct1(sycl::range<1>(2*SIZE*SIZE), cgh);
   // CHECK-NEXT:     auto d_d_acc_ct0 = dpct::get_access(d_d, cgh);
   // CHECK-EMPTY:
   // CHECK-NEXT:     cgh.parallel_for<dpct_kernel_name<class nonTypeTemplateReverse_{{[a-f0-9]+}}, dpct_kernel_scalar<SIZE>>>(

@@ -208,7 +208,6 @@ ENTRY_RENAMED("__uint_as_float", MapNames::getClNamespace(false, true) + "bit_ca
 
 // Device: int => sycl::abs, (float, double) => sycl::fabs
 // Host:   int => abs, float => fabsf, double => fabs, long double => fabsl
-ENTRY_RENAMED("abs", MapNames::getClNamespace(false, true) + "abs")
 ENTRY_RENAMED("labs", MapNames::getClNamespace(false, true) + "abs")
 ENTRY_RENAMED("llabs", MapNames::getClNamespace(false, true) + "abs")
 
@@ -302,10 +301,10 @@ ENTRY_EMULATED("__double2loint", "")
 ENTRY_EMULATED("__hiloint2double", "")
 ENTRY_EMULATED("__sad", MapNames::getClNamespace(false, true) + "abs_diff")
 ENTRY_EMULATED("__usad", MapNames::getClNamespace(false, true) + "abs_diff")
-ENTRY_EMULATED("__drcp_rd", MapNames::getClNamespace(false, true) + "native::recip")
-ENTRY_EMULATED("__drcp_rn", MapNames::getClNamespace(false, true) + "native::recip")
-ENTRY_EMULATED("__drcp_ru", MapNames::getClNamespace(false, true) + "native::recip")
-ENTRY_EMULATED("__drcp_rz", MapNames::getClNamespace(false, true) + "native::recip")
+ENTRY_EMULATED("__drcp_rd", "(1.0/(X))")
+ENTRY_EMULATED("__drcp_rn", "(1.0/(X))")
+ENTRY_EMULATED("__drcp_ru", "(1.0/(X))")
+ENTRY_EMULATED("__drcp_rz", "(1.0/(X))")
 
 
 // Half/Half2 Arithmetic Functions
@@ -600,3 +599,61 @@ ENTRY_RENAMED("mul24", MapNames::getClNamespace(false, true) + "mul24")
 
 // impl with new rewriter
 ENTRY_REWRITE("rsqrt")
+ENTRY_REWRITE("abs")
+ENTRY_REWRITE("saturate")
+
+// vector types
+ENTRY_RENAMED("make_char1", "char")
+ENTRY_RENAMED("make_char2", MapNames::getClNamespace(false, false) + "char2")
+ENTRY_RENAMED("make_char3", MapNames::getClNamespace(false, false) + "char3")
+ENTRY_RENAMED("make_char4", MapNames::getClNamespace(false, false) + "char4")
+ENTRY_RENAMED("make_uchar1", "uint8_t")
+ENTRY_RENAMED("make_uchar2", MapNames::getClNamespace(false, false) + "uchar2")
+ENTRY_RENAMED("make_uchar3", MapNames::getClNamespace(false, false) + "uchar3")
+ENTRY_RENAMED("make_uchar4", MapNames::getClNamespace(false, false) + "uchar4")
+
+ENTRY_RENAMED("make_short1", "short")
+ENTRY_RENAMED("make_short2", MapNames::getClNamespace(false, false) + "short2")
+ENTRY_RENAMED("make_short3", MapNames::getClNamespace(false, false) + "short3")
+ENTRY_RENAMED("make_short4", MapNames::getClNamespace(false, false) + "short4")
+ENTRY_RENAMED("make_ushort1", "uint16_t")
+ENTRY_RENAMED("make_ushort2", MapNames::getClNamespace(false, false) + "ushort2")
+ENTRY_RENAMED("make_ushort3", MapNames::getClNamespace(false, false) + "ushort3")
+ENTRY_RENAMED("make_ushort4", MapNames::getClNamespace(false, false) + "ushort4")
+
+ENTRY_RENAMED("make_int1", "int")
+ENTRY_RENAMED("make_int2", MapNames::getClNamespace(false, false) + "int2")
+ENTRY_RENAMED("make_int3", MapNames::getClNamespace(false, false) + "int3")
+ENTRY_RENAMED("make_int4", MapNames::getClNamespace(false, false) + "int4")
+ENTRY_RENAMED("make_uint1", "uint32_t")
+ENTRY_RENAMED("make_uint2", MapNames::getClNamespace(false, false) + "uint2")
+ENTRY_RENAMED("make_uint3", MapNames::getClNamespace(false, false) + "uint3")
+ENTRY_RENAMED("make_uint4", MapNames::getClNamespace(false, false) + "uint4")
+
+ENTRY_RENAMED("make_long1", "long")
+ENTRY_RENAMED("make_long2", MapNames::getClNamespace(false, false) + "long2")
+ENTRY_RENAMED("make_long3", MapNames::getClNamespace(false, false) + "long3")
+ENTRY_RENAMED("make_long4", MapNames::getClNamespace(false, false) + "long4")
+ENTRY_RENAMED("make_ulong1", "uint64_t")
+ENTRY_RENAMED("make_ulong2", MapNames::getClNamespace(false, false) + "ulong2")
+ENTRY_RENAMED("make_ulong3", MapNames::getClNamespace(false, false) + "ulong3")
+ENTRY_RENAMED("make_ulong4", MapNames::getClNamespace(false, false) + "ulong4")
+
+ENTRY_RENAMED("make_longlong1", "int64_t")
+ENTRY_RENAMED("make_longlong2", MapNames::getClNamespace(false, false) + "longlong2")
+ENTRY_RENAMED("make_longlong3", MapNames::getClNamespace(false, false) + "longlong3")
+ENTRY_RENAMED("make_longlong4", MapNames::getClNamespace(false, false) + "longlong4")
+ENTRY_RENAMED("make_ulonglong1", "uint64_t")
+ENTRY_RENAMED("make_ulonglong2", MapNames::getClNamespace(false, false) + "ulonglong2")
+ENTRY_RENAMED("make_ulonglong3", MapNames::getClNamespace(false, false) + "ulonglong3")
+ENTRY_RENAMED("make_ulonglong4", MapNames::getClNamespace(false, false) + "ulonglong4")
+
+ENTRY_RENAMED("make_float1", "float")
+ENTRY_RENAMED("make_float2", MapNames::getClNamespace(false, false) + "float2")
+ENTRY_RENAMED("make_float3", MapNames::getClNamespace(false, false) + "float3")
+ENTRY_RENAMED("make_float4", MapNames::getClNamespace(false, false) + "float4")
+
+ENTRY_RENAMED("make_double1", "double")
+ENTRY_RENAMED("make_double2", MapNames::getClNamespace(false, false) + "double2")
+ENTRY_RENAMED("make_double3", MapNames::getClNamespace(false, false) + "double3")
+ENTRY_RENAMED("make_double4", MapNames::getClNamespace(false, false) + "double4")

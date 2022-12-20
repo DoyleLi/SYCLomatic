@@ -150,12 +150,7 @@ define i64 @mul64(i64 %a, i64 %b) nounwind {
 ;
 ; RV64I-LABEL: mul64:
 ; RV64I:       # %bb.0:
-; RV64I-NEXT:    addi sp, sp, -16
-; RV64I-NEXT:    sd ra, 8(sp) # 8-byte Folded Spill
-; RV64I-NEXT:    call __muldi3@plt
-; RV64I-NEXT:    ld ra, 8(sp) # 8-byte Folded Reload
-; RV64I-NEXT:    addi sp, sp, 16
-; RV64I-NEXT:    ret
+; RV64I-NEXT:    tail __muldi3@plt
 ;
 ; RV64IM-LABEL: mul64:
 ; RV64IM:       # %bb.0:
@@ -755,13 +750,8 @@ define i64 @muli64_m65(i64 %a) nounwind {
 define i32 @muli32_p384(i32 %a) nounwind {
 ; RV32I-LABEL: muli32_p384:
 ; RV32I:       # %bb.0:
-; RV32I-NEXT:    addi sp, sp, -16
-; RV32I-NEXT:    sw ra, 12(sp) # 4-byte Folded Spill
 ; RV32I-NEXT:    li a1, 384
-; RV32I-NEXT:    call __mulsi3@plt
-; RV32I-NEXT:    lw ra, 12(sp) # 4-byte Folded Reload
-; RV32I-NEXT:    addi sp, sp, 16
-; RV32I-NEXT:    ret
+; RV32I-NEXT:    tail __mulsi3@plt
 ;
 ; RV32IM-LABEL: muli32_p384:
 ; RV32IM:       # %bb.0:
@@ -791,13 +781,8 @@ define i32 @muli32_p384(i32 %a) nounwind {
 define i32 @muli32_p12288(i32 %a) nounwind {
 ; RV32I-LABEL: muli32_p12288:
 ; RV32I:       # %bb.0:
-; RV32I-NEXT:    addi sp, sp, -16
-; RV32I-NEXT:    sw ra, 12(sp) # 4-byte Folded Spill
 ; RV32I-NEXT:    lui a1, 3
-; RV32I-NEXT:    call __mulsi3@plt
-; RV32I-NEXT:    lw ra, 12(sp) # 4-byte Folded Reload
-; RV32I-NEXT:    addi sp, sp, 16
-; RV32I-NEXT:    ret
+; RV32I-NEXT:    tail __mulsi3@plt
 ;
 ; RV32IM-LABEL: muli32_p12288:
 ; RV32IM:       # %bb.0:
@@ -923,14 +908,9 @@ define i32 @muli32_m3840(i32 %a) nounwind {
 define i32 @muli32_m4352(i32 %a) nounwind {
 ; RV32I-LABEL: muli32_m4352:
 ; RV32I:       # %bb.0:
-; RV32I-NEXT:    addi sp, sp, -16
-; RV32I-NEXT:    sw ra, 12(sp) # 4-byte Folded Spill
 ; RV32I-NEXT:    lui a1, 1048575
 ; RV32I-NEXT:    addi a1, a1, -256
-; RV32I-NEXT:    call __mulsi3@plt
-; RV32I-NEXT:    lw ra, 12(sp) # 4-byte Folded Reload
-; RV32I-NEXT:    addi sp, sp, 16
-; RV32I-NEXT:    ret
+; RV32I-NEXT:    tail __mulsi3@plt
 ;
 ; RV32IM-LABEL: muli32_m4352:
 ; RV32IM:       # %bb.0:
@@ -1074,14 +1054,9 @@ define i64 @muli64_m4352(i64 %a) nounwind {
 ;
 ; RV64I-LABEL: muli64_m4352:
 ; RV64I:       # %bb.0:
-; RV64I-NEXT:    addi sp, sp, -16
-; RV64I-NEXT:    sd ra, 8(sp) # 8-byte Folded Spill
 ; RV64I-NEXT:    lui a1, 1048575
 ; RV64I-NEXT:    addiw a1, a1, -256
-; RV64I-NEXT:    call __muldi3@plt
-; RV64I-NEXT:    ld ra, 8(sp) # 8-byte Folded Reload
-; RV64I-NEXT:    addi sp, sp, 16
-; RV64I-NEXT:    ret
+; RV64I-NEXT:    tail __muldi3@plt
 ;
 ; RV64IM-LABEL: muli64_m4352:
 ; RV64IM:       # %bb.0:
@@ -1174,17 +1149,17 @@ define i128 @muli128_m3840(i128 %a) nounwind {
 ; RV32I-NEXT:  # %bb.1:
 ; RV32I-NEXT:    sltu t1, a5, a3
 ; RV32I-NEXT:  .LBB30_2:
-; RV32I-NEXT:    sub a1, a2, a1
-; RV32I-NEXT:    sltu a2, a1, t1
-; RV32I-NEXT:    sub a2, t0, a2
-; RV32I-NEXT:    sub a1, a1, t1
-; RV32I-NEXT:    sub a3, a5, a3
-; RV32I-NEXT:    sub a3, a3, a7
+; RV32I-NEXT:    sub a2, a2, a1
+; RV32I-NEXT:    sltu a1, a2, t1
+; RV32I-NEXT:    sub a1, t0, a1
+; RV32I-NEXT:    sub a2, a2, t1
+; RV32I-NEXT:    sub a5, a5, a3
+; RV32I-NEXT:    sub a3, a5, a7
 ; RV32I-NEXT:    sub a4, a6, a4
 ; RV32I-NEXT:    sw a4, 0(a0)
 ; RV32I-NEXT:    sw a3, 4(a0)
-; RV32I-NEXT:    sw a1, 8(a0)
-; RV32I-NEXT:    sw a2, 12(a0)
+; RV32I-NEXT:    sw a2, 8(a0)
+; RV32I-NEXT:    sw a1, 12(a0)
 ; RV32I-NEXT:    ret
 ;
 ; RV32IM-LABEL: muli128_m3840:
@@ -1228,16 +1203,16 @@ define i128 @muli128_m3840(i128 %a) nounwind {
 ; RV32IM-NEXT:    sub a3, t1, a3
 ; RV32IM-NEXT:    add a2, a3, a2
 ; RV32IM-NEXT:    sub a3, t3, a4
-; RV32IM-NEXT:    sub a1, a3, a1
-; RV32IM-NEXT:    add a1, a1, a2
-; RV32IM-NEXT:    add a1, a1, t0
-; RV32IM-NEXT:    add a1, a7, a1
-; RV32IM-NEXT:    add a1, a1, s0
-; RV32IM-NEXT:    mul a2, a4, a5
-; RV32IM-NEXT:    sw a2, 0(a0)
+; RV32IM-NEXT:    sub a3, a3, a1
+; RV32IM-NEXT:    add a2, a3, a2
+; RV32IM-NEXT:    add a2, a2, t0
+; RV32IM-NEXT:    add a2, a7, a2
+; RV32IM-NEXT:    add a2, a2, s0
+; RV32IM-NEXT:    mul a1, a4, a5
+; RV32IM-NEXT:    sw a1, 0(a0)
 ; RV32IM-NEXT:    sw a6, 4(a0)
 ; RV32IM-NEXT:    sw t6, 8(a0)
-; RV32IM-NEXT:    sw a1, 12(a0)
+; RV32IM-NEXT:    sw a2, 12(a0)
 ; RV32IM-NEXT:    lw s0, 12(sp) # 4-byte Folded Reload
 ; RV32IM-NEXT:    lw s1, 8(sp) # 4-byte Folded Reload
 ; RV32IM-NEXT:    addi sp, sp, 16
@@ -1305,8 +1280,8 @@ define i128 @muli128_m63(i128 %a) nounwind {
 ; RV32I-NEXT:    sub a7, t2, t0
 ; RV32I-NEXT:    sub a3, a3, a6
 ; RV32I-NEXT:    sub a3, a3, a4
-; RV32I-NEXT:    sub a1, a2, a1
-; RV32I-NEXT:    sw a1, 0(a0)
+; RV32I-NEXT:    sub a2, a2, a1
+; RV32I-NEXT:    sw a2, 0(a0)
 ; RV32I-NEXT:    sw a3, 4(a0)
 ; RV32I-NEXT:    sw a7, 8(a0)
 ; RV32I-NEXT:    sw a5, 12(a0)
@@ -1352,19 +1327,19 @@ define i128 @muli128_m63(i128 %a) nounwind {
 ; RV32IM-NEXT:    slli t1, a2, 6
 ; RV32IM-NEXT:    sub a2, a2, t1
 ; RV32IM-NEXT:    mulhu a5, a1, a5
-; RV32IM-NEXT:    sub a1, a5, a1
+; RV32IM-NEXT:    sub a5, a5, a1
+; RV32IM-NEXT:    add a2, a5, a2
+; RV32IM-NEXT:    sub a1, t3, a3
+; RV32IM-NEXT:    sub a1, a1, a4
 ; RV32IM-NEXT:    add a1, a1, a2
-; RV32IM-NEXT:    sub a2, t3, a3
-; RV32IM-NEXT:    sub a2, a2, a4
-; RV32IM-NEXT:    add a1, a2, a1
 ; RV32IM-NEXT:    neg a2, t5
 ; RV32IM-NEXT:    sltu a2, a2, t0
 ; RV32IM-NEXT:    add a1, a1, a2
 ; RV32IM-NEXT:    add a1, a7, a1
 ; RV32IM-NEXT:    add a1, a1, s0
 ; RV32IM-NEXT:    slli a2, a3, 6
-; RV32IM-NEXT:    sub a2, a3, a2
-; RV32IM-NEXT:    sw a2, 0(a0)
+; RV32IM-NEXT:    sub a3, a3, a2
+; RV32IM-NEXT:    sw a3, 0(a0)
 ; RV32IM-NEXT:    sw a6, 4(a0)
 ; RV32IM-NEXT:    sw t6, 8(a0)
 ; RV32IM-NEXT:    sw a1, 12(a0)
@@ -1437,8 +1412,8 @@ define i64 @mulhsu_i64(i64 %a, i64 %b) nounwind {
 ; RV32I-NEXT:    mv a2, s2
 ; RV32I-NEXT:    li a3, 0
 ; RV32I-NEXT:    call __muldi3@plt
-; RV32I-NEXT:    add a2, a0, s5
-; RV32I-NEXT:    sltu a0, a2, a0
+; RV32I-NEXT:    add s5, a0, s5
+; RV32I-NEXT:    sltu a0, s5, a0
 ; RV32I-NEXT:    add a0, a1, a0
 ; RV32I-NEXT:    add s8, s7, a0
 ; RV32I-NEXT:    mv a0, s0
@@ -1461,18 +1436,18 @@ define i64 @mulhsu_i64(i64 %a, i64 %b) nounwind {
 ; RV32I-NEXT:    mv a2, s1
 ; RV32I-NEXT:    mv a3, s0
 ; RV32I-NEXT:    call __muldi3@plt
-; RV32I-NEXT:    add a3, a0, s2
-; RV32I-NEXT:    add a2, s9, a3
-; RV32I-NEXT:    sltu a4, a2, s9
-; RV32I-NEXT:    sltu a5, s9, s5
-; RV32I-NEXT:    sltu a6, s8, s7
-; RV32I-NEXT:    add a6, s6, a6
-; RV32I-NEXT:    add a5, a6, a5
+; RV32I-NEXT:    add s2, a0, s2
+; RV32I-NEXT:    add a2, s9, s2
+; RV32I-NEXT:    sltu a3, a2, s9
+; RV32I-NEXT:    sltu a4, s9, s5
+; RV32I-NEXT:    sltu a5, s8, s7
+; RV32I-NEXT:    add a5, s6, a5
+; RV32I-NEXT:    add a4, a5, a4
 ; RV32I-NEXT:    add a1, a1, s3
-; RV32I-NEXT:    sltu a0, a3, a0
+; RV32I-NEXT:    sltu a0, s2, a0
 ; RV32I-NEXT:    add a0, a1, a0
-; RV32I-NEXT:    add a0, a5, a0
-; RV32I-NEXT:    add a1, a0, a4
+; RV32I-NEXT:    add a0, a4, a0
+; RV32I-NEXT:    add a1, a0, a3
 ; RV32I-NEXT:    mv a0, a2
 ; RV32I-NEXT:    lw ra, 44(sp) # 4-byte Folded Reload
 ; RV32I-NEXT:    lw s0, 40(sp) # 4-byte Folded Reload
@@ -1578,5 +1553,107 @@ define i8 @muladd_demand(i8 %x, i8 %y) nounwind {
   %m = mul i8 %x, 14
   %a = add i8 %y, %m
   %r = and i8 %a, 15
+  ret i8 %r
+}
+
+define i8 @mulsub_demand(i8 %x, i8 %y) nounwind {
+; RV32I-LABEL: mulsub_demand:
+; RV32I:       # %bb.0:
+; RV32I-NEXT:    slli a0, a0, 1
+; RV32I-NEXT:    add a0, a1, a0
+; RV32I-NEXT:    andi a0, a0, 15
+; RV32I-NEXT:    ret
+;
+; RV32IM-LABEL: mulsub_demand:
+; RV32IM:       # %bb.0:
+; RV32IM-NEXT:    slli a0, a0, 1
+; RV32IM-NEXT:    add a0, a1, a0
+; RV32IM-NEXT:    andi a0, a0, 15
+; RV32IM-NEXT:    ret
+;
+; RV64I-LABEL: mulsub_demand:
+; RV64I:       # %bb.0:
+; RV64I-NEXT:    slliw a0, a0, 1
+; RV64I-NEXT:    addw a0, a1, a0
+; RV64I-NEXT:    andi a0, a0, 15
+; RV64I-NEXT:    ret
+;
+; RV64IM-LABEL: mulsub_demand:
+; RV64IM:       # %bb.0:
+; RV64IM-NEXT:    slliw a0, a0, 1
+; RV64IM-NEXT:    addw a0, a1, a0
+; RV64IM-NEXT:    andi a0, a0, 15
+; RV64IM-NEXT:    ret
+  %m = mul i8 %x, 14
+  %a = sub i8 %y, %m
+  %r = and i8 %a, 15
+  ret i8 %r
+}
+
+define i8 @muladd_demand_2(i8 %x, i8 %y) nounwind {
+; RV32I-LABEL: muladd_demand_2:
+; RV32I:       # %bb.0:
+; RV32I-NEXT:    slli a0, a0, 1
+; RV32I-NEXT:    sub a1, a1, a0
+; RV32I-NEXT:    ori a0, a1, -16
+; RV32I-NEXT:    ret
+;
+; RV32IM-LABEL: muladd_demand_2:
+; RV32IM:       # %bb.0:
+; RV32IM-NEXT:    slli a0, a0, 1
+; RV32IM-NEXT:    sub a1, a1, a0
+; RV32IM-NEXT:    ori a0, a1, -16
+; RV32IM-NEXT:    ret
+;
+; RV64I-LABEL: muladd_demand_2:
+; RV64I:       # %bb.0:
+; RV64I-NEXT:    slliw a0, a0, 1
+; RV64I-NEXT:    subw a1, a1, a0
+; RV64I-NEXT:    ori a0, a1, -16
+; RV64I-NEXT:    ret
+;
+; RV64IM-LABEL: muladd_demand_2:
+; RV64IM:       # %bb.0:
+; RV64IM-NEXT:    slliw a0, a0, 1
+; RV64IM-NEXT:    subw a1, a1, a0
+; RV64IM-NEXT:    ori a0, a1, -16
+; RV64IM-NEXT:    ret
+  %m = mul i8 %x, 14
+  %a = add i8 %y, %m
+  %r = or i8 %a, 240
+  ret i8 %r
+}
+
+define i8 @mulsub_demand_2(i8 %x, i8 %y) nounwind {
+; RV32I-LABEL: mulsub_demand_2:
+; RV32I:       # %bb.0:
+; RV32I-NEXT:    slli a0, a0, 1
+; RV32I-NEXT:    add a0, a1, a0
+; RV32I-NEXT:    ori a0, a0, -16
+; RV32I-NEXT:    ret
+;
+; RV32IM-LABEL: mulsub_demand_2:
+; RV32IM:       # %bb.0:
+; RV32IM-NEXT:    slli a0, a0, 1
+; RV32IM-NEXT:    add a0, a1, a0
+; RV32IM-NEXT:    ori a0, a0, -16
+; RV32IM-NEXT:    ret
+;
+; RV64I-LABEL: mulsub_demand_2:
+; RV64I:       # %bb.0:
+; RV64I-NEXT:    slliw a0, a0, 1
+; RV64I-NEXT:    addw a0, a1, a0
+; RV64I-NEXT:    ori a0, a0, -16
+; RV64I-NEXT:    ret
+;
+; RV64IM-LABEL: mulsub_demand_2:
+; RV64IM:       # %bb.0:
+; RV64IM-NEXT:    slliw a0, a0, 1
+; RV64IM-NEXT:    addw a0, a1, a0
+; RV64IM-NEXT:    ori a0, a0, -16
+; RV64IM-NEXT:    ret
+  %m = mul i8 %x, 14
+  %a = sub i8 %y, %m
+  %r = or i8 %a, 240
   ret i8 %r
 }

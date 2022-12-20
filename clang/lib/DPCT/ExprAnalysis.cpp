@@ -9,9 +9,10 @@
 #include "ExprAnalysis.h"
 
 #include "ASTTraversal.h"
-#include "DNNAPIMigration.h"
 #include "AnalysisInfo.h"
+#include "CUBAPIMigration.h"
 #include "CallExprRewriter.h"
+#include "DNNAPIMigration.h"
 #include "TypeLocRewriters.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
@@ -22,6 +23,7 @@
 #include "clang/AST/StmtGraphTraits.h"
 #include "clang/AST/StmtObjC.h"
 #include "clang/AST/StmtOpenMP.h"
+#include "MemberExprRewriter.h"
 
 extern std::string DpctInstallPath;
 namespace clang {
@@ -44,7 +46,7 @@ TemplateDependentStringInfo::TemplateDependentStringInfo(
     const std::map<size_t, std::shared_ptr<TemplateDependentReplacement>>
         &InTDRs)
     : SourceStr(SrcStr) {
-  for (auto TDR : InTDRs)
+  for (const auto &TDR : InTDRs)
     TDRs.emplace_back(TDR.second->alterSource(SourceStr));
 }
 
@@ -231,8 +233,7 @@ ExprAnalysis::getOffsetAndLength(SourceLocation BeginLoc,
 
     auto Begin = getOffset(getExprLocation(BeginLoc));
     auto End = getOffsetAndLength(EndLoc);
-    if(SrcBeginLoc.isInvalid())
-      SrcBeginLoc = BeginLoc;
+    SrcBeginLoc = BeginLoc;
 
     // Avoid illegal range which will cause SIGABRT
     if (End.first + End.second < Begin) {
@@ -259,8 +260,16 @@ ExprAnalysis::getOffsetAndLength(SourceLocation BeginLoc, SourceLocation EndLoc,
   }
   // Calculate offset and length from SourceLocation
   auto End = getOffset(EndLoc);
+
+  Token Tok2;
+  Lexer::getRawToken(EndLoc, Tok2, SM, Context.getLangOpts());
+  // if the last token is ">>" or ">>>",
+  // since DPCT does not support nested template type migration,
+  // the last token should be treated as ">"
   auto LastTokenLength =
-      Lexer::MeasureTokenLength(EndLoc, SM, Context.getLangOpts());
+      Tok2.is(tok::greatergreater) || Tok2.is(tok::greatergreatergreater)
+          ? 1
+          : Tok2.getLength();
 
   auto DecompLoc = SM.getDecomposedLoc(BeginLoc);
   FileId = DecompLoc.first;
@@ -272,23 +281,20 @@ ExprAnalysis::getOffsetAndLength(SourceLocation BeginLoc, SourceLocation EndLoc,
 
 std::pair<size_t, size_t> ExprAnalysis::getOffsetAndLength(const Expr *E) {
   SourceLocation BeginLoc, EndLoc;
-  // if the parent expr is inside macro and current expr is macro arg expansion,
-  // use the expansion location of the macro arg in the macro definition.
+  size_t End;
+
   if (IsInMacroDefine) {
-    if (SM.isMacroArgExpansion(E->getBeginLoc())) {
-      BeginLoc = SM.getSpellingLoc(
-          SM.getImmediateExpansionRange(E->getBeginLoc()).getBegin());
-      EndLoc = SM.getSpellingLoc(
-          SM.getImmediateExpansionRange(E->getEndLoc()).getEnd());
-    } else {
-      BeginLoc =
-          SM.getExpansionLoc(SM.getImmediateSpellingLoc(E->getBeginLoc()));
-      EndLoc = SM.getExpansionLoc(SM.getImmediateSpellingLoc(E->getEndLoc()));
-      if (isExprStraddle(E)) {
-        auto Range = getTheOneBeforeLastImmediateExapansion(E->getBeginLoc(),
-                                                            E->getEndLoc());
-        BeginLoc = SM.getImmediateSpellingLoc(Range.first);
-        EndLoc = SM.getImmediateSpellingLoc(Range.second);
+    // If the expr is in macro define, and the CallSpellingBegin/End is set,
+    // we can use the CallSpellingBegin/End to get a more precise range.
+    if (CallSpellingBegin.isValid() && CallSpellingEnd.isValid()) {
+      auto Range = getRangeInRange(E, CallSpellingBegin, CallSpellingEnd);
+      auto DLBegin = SM.getDecomposedLoc(Range.first);
+      auto DLEnd = SM.getDecomposedLoc(Range.second);
+      if (DLBegin.first == DLEnd.first &&
+          DLBegin.second <= DLEnd.second) {
+        BeginLoc = Range.first;
+        EndLoc = Range.second;
+        End = getOffset(EndLoc);
       }
     }
   } else {
@@ -297,11 +303,8 @@ std::pair<size_t, size_t> ExprAnalysis::getOffsetAndLength(const Expr *E) {
     auto Range = getStmtExpansionSourceRange(E);
     BeginLoc = Range.getBegin();
     EndLoc = Range.getEnd();
+    End = getOffset(EndLoc) + Lexer::MeasureTokenLength(EndLoc, SM, Context.getLangOpts());
   }
-  // Calculate offset and length from SourceLocation
-  auto End = getOffset(EndLoc);
-  auto LastTokenLength =
-      Lexer::MeasureTokenLength(EndLoc, SM, Context.getLangOpts());
 
   // Find the begin/end location include prefix and postfix
   // Set Prefix and Postfix strings
@@ -317,7 +320,6 @@ std::pair<size_t, size_t> ExprAnalysis::getOffsetAndLength(const Expr *E) {
 
   ExprBeginLoc = BeginLoc;
   ExprEndLoc = EndLoc;
-
   RewritePrefix =
       std::string(SM.getCharacterData(BeginLoc), RewritePrefixLength);
 
@@ -338,7 +340,7 @@ std::pair<size_t, size_t> ExprAnalysis::getOffsetAndLength(const Expr *E) {
   // The offset of Expr used in ExprAnalysis is related to SrcBegin not
   // FileBegin
   auto Begin = DecompLoc.second - SrcBegin;
-  return std::pair<size_t, size_t>(Begin, End - Begin + LastTokenLength);
+  return std::pair<size_t, size_t>(Begin, End - Begin);
 }
 
 void ExprAnalysis::initExpression(const Expr *Expression) {
@@ -361,7 +363,7 @@ void ExprAnalysis::initSourceRange(const SourceRange &Range) {
         getOffsetAndLength(Range.getBegin(), Range.getEnd());
     if (auto FileBuffer = SM.getBufferOrNone(FileId)) {
       ReplSet.init(std::string(
-          FileBuffer.getValue().getBuffer().data() + SrcBegin, SrcLength));
+          FileBuffer.value().getBuffer().data() + SrcBegin, SrcLength));
       return;
     }
   }
@@ -439,7 +441,15 @@ void ExprAnalysis::analyzeExpr(const DeclRefExpr *DRE) {
             clang::NestedNameSpecifier::SpecifierKind::NamespaceAlias;
     bool IsSpecicalAPI = isMathFunction(DRE->getNameInfo().getAsString()) ||
                          isCGAPI(DRE->getNameInfo().getAsString());
-    if (!IsNamespaceOrAlias || !IsSpecicalAPI) {
+                         // for thrust::log10 and thrust::sinh ...
+    // log10 is a math function
+    if (Qualifier->getAsNamespace() &&
+        Qualifier->getAsNamespace()->getName() == "thrust" &&
+        dpct::DpctGlobalInfo::isInCudaPath(
+            Qualifier->getAsNamespace()->getBeginLoc())) {
+      CTSName = getNestedNameSpecifierString(Qualifier) +
+                DRE->getNameInfo().getAsString();
+    } else if (!IsNamespaceOrAlias || !IsSpecicalAPI) {
       CTSName = getNestedNameSpecifierString(Qualifier) +
                 DRE->getNameInfo().getAsString();
     }
@@ -450,12 +460,31 @@ void ExprAnalysis::analyzeExpr(const DeclRefExpr *DRE) {
   } else {
     RefString = DRE->getNameInfo().getAsString();
   }
-
   if (auto TemplateDecl = dyn_cast<NonTypeTemplateParmDecl>(DRE->getDecl()))
     addReplacement(DRE, TemplateDecl->getIndex());
   else if (auto ECD = dyn_cast<EnumConstantDecl>(DRE->getDecl())) {
-    auto &ReplEnum = MapNames::findReplacedName(EnumConstantRule::EnumNamesMap,
-                                                RefString);
+    std::unordered_set<std::string> targetStr = {
+        "thread_scope_system",  "thread_scope_device",  "thread_scope_block",
+        "memory_order_relaxed", "memory_order_acq_rel", "memory_order_release",
+        "memory_order_acquire", "memory_order_seq_cst"};
+
+    if (targetStr.find(ECD->getNameAsString()) != targetStr.end())
+      if (const auto *ED = dyn_cast<EnumDecl>(ECD->getDeclContext())) {
+        std::string NameString = "";
+        llvm::raw_string_ostream NameStringOS(NameString);
+        for (const auto *NSD = dyn_cast<NamespaceDecl>(ED->getDeclContext());
+             NSD; NSD = dyn_cast<NamespaceDecl>(NSD->getDeclContext())) {
+          if (NSD->getName() == "__detail" || NSD->isInline() ||
+              NSD->getName() == "std")
+            continue;
+          NameStringOS << NSD->getNameAsString() << "::";
+        }
+        NameStringOS << ECD->getNameAsString();
+        RefString = NameString;
+      }
+
+    auto &ReplEnum =
+        MapNames::findReplacedName(EnumConstantRule::EnumNamesMap, RefString);
     requestHelperFeatureForEnumNames(RefString, DRE);
     auto ItEnum = EnumConstantRule::EnumNamesMap.find(RefString);
     if (ItEnum != EnumConstantRule::EnumNamesMap.end()) {
@@ -468,22 +497,18 @@ void ExprAnalysis::analyzeExpr(const DeclRefExpr *DRE) {
     if (!ReplEnum.empty())
       addReplacement(DRE, ReplEnum);
     else {
-      auto &ReplBLASEnum = MapNames::findReplacedName(MapNames::BLASEnumsMap,
-                                                      ECD->getName().str());
-      if (!ReplBLASEnum.empty())
-        addReplacement(DRE, ReplBLASEnum);
-      else {
-        auto &ReplFuncAttrEnum = MapNames::findReplacedName(
-            MapNames::FunctionAttrMap, ECD->getName().str());
-        if (!ReplFuncAttrEnum.empty())
-          addReplacement(DRE, ReplFuncAttrEnum);
-        else {
-          auto &CuDNNEnum = MapNames::findReplacedName(
-              CuDNNTypeRule::CuDNNEnumNamesMap, ECD->getName().str());
-          if (!CuDNNEnum.empty())
-            addReplacement(DRE, CuDNNEnum);
-        }
-      }
+#define REPLACE_ENUM(MAP)                                                      \
+  do {                                                                         \
+    auto &Repl = MapNames::findReplacedName(MAP, ECD->getName().str());        \
+    if (!Repl.empty())                                                         \
+      addReplacement(DRE, Repl);                                               \
+  } while (0)
+      REPLACE_ENUM(MapNames::BLASEnumsMap);
+      REPLACE_ENUM(MapNames::FunctionAttrMap);
+      REPLACE_ENUM(CuDNNTypeRule::CuDNNEnumNamesMap);
+      REPLACE_ENUM(MapNames::SOLVEREnumsMap);
+      REPLACE_ENUM(MapNames::SPBLASEnumsMap);
+#undef REPLACE_ENUM
     }
   } else if (auto VD = dyn_cast<VarDecl>(DRE->getDecl())) {
     if (RefString == "warpSize" &&
@@ -500,22 +525,86 @@ void ExprAnalysis::analyzeExpr(const DeclRefExpr *DRE) {
 void ExprAnalysis::getThrustReplStrAndLength(const std::string &CtorClassName,
                                              std::string &Replacement,
                                              size_t &TypeLen) {
-
   if (CtorClassName.find("thrust::") == 0) {
     TypeLen = CtorClassName.find('<');
     if (TypeLen == std::string::npos)
-      TypeLen = 8;
+      TypeLen = CtorClassName.size();
 
     auto RealTypeNameStr = CtorClassName.substr(0, TypeLen);
     Replacement =
         MapNames::findReplacedName(MapNames::TypeNamesMap, RealTypeNameStr);
-    if (Replacement.empty())
+    if (Replacement.empty()) {
+      static const size_t ThrustNamespaceLength = std::strlen("thrust::");
+      TypeLen = ThrustNamespaceLength;
       Replacement = "std::";
+    }
   }
 }
 
 void ExprAnalysis::analyzeExpr(const ConstantExpr *CE) {
   dispatch(CE->getSubExpr());
+}
+
+void ExprAnalysis::analyzeExpr(const IntegerLiteral *IL) {
+  auto DefinitionRange = getDefinitionRange(IL->getBeginLoc(), IL->getEndLoc());
+  auto TokBeginLoc = DefinitionRange.getBegin();
+  auto TokenLength = Lexer::MeasureTokenLength(
+      TokBeginLoc, SM, Context.getLangOpts());
+  std::string TokStr(SM.getCharacterData(TokBeginLoc), TokenLength);
+
+  // TODO: cannot handle case like:
+  // #define CHECK(ARG) ARG
+  // #define MACRO CHECK(cufftExecC2C(plan, idata, odata, CUFFT_FORWARD))
+  // void foo(cufftHandle plan, cufftComplex *idata, cufftComplex *odata) {
+  //   MACRO;
+  // }
+  const Expr *ParentExpr = DpctGlobalInfo::findParent<Expr>(IL);
+  bool IsInCudaPath = DpctGlobalInfo::isInCudaPath(
+      DpctGlobalInfo::getLocInfo(SM.getSpellingLoc(IL->getBeginLoc())).first);
+  if (TokStr == "CUFFT_FORWARD" && ParentExpr && IsInCudaPath) {
+    addReplacement(DefinitionRange, ParentExpr,
+                   MapNames::getDpctNamespace() + "fft::fft_direction::forward");
+    requestFeature(HelperFeatureEnum::FftUtils_fft_direction, TokBeginLoc);
+  } else if ((TokStr == "CUFFT_INVERSE") && ParentExpr && IsInCudaPath) {
+    addReplacement(DefinitionRange, ParentExpr,
+                   MapNames::getDpctNamespace() + "fft::fft_direction::backward");
+    requestFeature(HelperFeatureEnum::FftUtils_fft_direction, TokBeginLoc);
+  }
+}
+
+void ExprAnalysis::analyzeExpr(const InitListExpr *ILE) {
+  if (const CXXFunctionalCastExpr *CFCE =
+          DpctGlobalInfo::findParent<CXXFunctionalCastExpr>(ILE)) {
+    // 'int64_t' might be alias to 'long'(LP64) or 'long long'(LLP64)
+    const auto *BT0 =
+        Context.getIntTypeForBitwidth(64, true)->getAs<BuiltinType>();
+    const auto *BT1 = CFCE->getType()->getAs<BuiltinType>();
+    if (CFCE->isListInitialization() && ILE->getNumInits() == 1 &&
+        (BT0 && BT1 && BT0->getKind() == BT1->getKind())) {
+      if (const auto *ME =
+              dyn_cast<MemberExpr>(ILE->getInit(0)->IgnoreImplicit())) {
+        auto QT = ME->getBase()->getType();
+        if (QT->isPointerType()) {
+          QT = QT->getPointeeType();
+        }
+        if (DpctGlobalInfo::getUnqualifiedTypeName(
+                QT->getCanonicalTypeUnqualified()) == "dim3") {
+          // Replace initializer list with explicit type conversion (e.g.,
+          // 'int64_t{d3[2]}' to 'int64_t(d3[2])') to slience narrowing
+          // error (e.g., 'size_t -> int64_t') for
+          // non-constant-expression in int64_t initializer list.
+          // E.g.,
+          // dim3 d3; int64_t{d3.x};
+          // will be migratd to
+          // sycl::range<3> d3; int64_t(d3[2]);
+          addReplacement(ILE->getLBraceLoc(), "(");
+          addReplacement(ILE->getRBraceLoc(), ")");
+        }
+      }
+    }
+  }
+  for (const auto &Init : ILE->inits())
+    dispatch(Init);
 }
 
 void ExprAnalysis::analyzeExpr(const CXXUnresolvedConstructExpr *Ctor) {
@@ -525,11 +614,21 @@ void ExprAnalysis::analyzeExpr(const CXXUnresolvedConstructExpr *Ctor) {
   }
 }
 
+void ExprAnalysis::analyzeExpr(const CXXTemporaryObjectExpr *Temp) {
+  std::string TypeName = DpctGlobalInfo::getUnqualifiedTypeName(
+      Temp->getType().getCanonicalType());
+  if (StringRef(TypeName).startswith("cub::") &&
+      CubTypeRule::CanMappingToSyclType(TypeName)) {
+    analyzeType(Temp->getTypeSourceInfo()->getTypeLoc());
+    return;
+  }
+
+  analyzeExpr(static_cast<const CXXConstructExpr *>(Temp));
+}
 
 void ExprAnalysis::analyzeExpr(const CXXConstructExpr *Ctor) {
   std::string CtorClassName =
       Ctor->getConstructor()->getParent()->getQualifiedNameAsString();
-
   if (CtorClassName.find("thrust::") == 0) {
     // Distinguish CXXTemporaryObjectExpr from other copy ctor before migrating
     // the ctor. Ex. foo(thrust::minus<int>());
@@ -593,7 +692,20 @@ void ExprAnalysis::analyzeExpr(const MemberExpr *ME) {
   std::string FieldName = "";
   if (ME->getMemberDecl()->getIdentifier()) {
     FieldName = ME->getMemberDecl()->getName().str();
-    auto ItFieldRule = MapNames::ClassFieldMap.find(BaseType + "." + FieldName);
+    auto MemberExprName = BaseType + "." + FieldName;
+    auto ItFieldRule = MapNames::ClassFieldMap.find(MemberExprName);
+    if (!MemberExprRewriterFactoryBase::MemberExprRewriterMap)
+      return;
+    auto Itr = MemberExprRewriterFactoryBase::MemberExprRewriterMap->find(MemberExprName);
+    if (Itr != MemberExprRewriterFactoryBase::MemberExprRewriterMap->end()) {
+      auto Rewriter = Itr->second->create(ME);
+      auto Result = Rewriter->rewrite();
+      if (Result.has_value()) {
+        auto ResultStr = Result.value();
+        addReplacement(ME->getBeginLoc(), ME->getEndLoc(), Result.value());
+      }
+      return;
+    }
     if (ItFieldRule != MapNames::ClassFieldMap.end()) {
       if (ItFieldRule->second->GetterName == "") {
         addReplacement(ME->getMemberLoc(), ME->getMemberLoc(),
@@ -663,15 +775,25 @@ void ExprAnalysis::analyzeExpr(const MemberExpr *ME) {
       }
     }
   } else if (BaseType == "dim3") {
+    if (ME->isArrow()) {
+      addReplacement(ME->getBase(), "(" + getDrefName(ME->getBase()) + ")");
+    }
     addReplacement(
         ME->getOperatorLoc(), ME->getMemberLoc(),
         MapNames::findReplacedName(MapNames::Dim3MemberNamesMap,
                                    ME->getMemberNameInfo().getAsString()));
   } else if (BaseType == "cudaDeviceProp") {
-    std::string ReplacementStr = MapNames::findReplacedName(
-        DevicePropVarRule::PropNamesMap, ME->getMemberNameInfo().getAsString());
+    auto MemberName = ME->getMemberNameInfo().getAsString();
+
+    std::string ReplacementStr = MapNames::findReplacedName(DeviceInfoVarRule::PropNamesMap, MemberName);
     if (!ReplacementStr.empty()) {
-      addReplacement(ME->getMemberLoc(), "get_" + ReplacementStr + "()");
+      std::string TmplArg = "";
+      if (MemberName == "maxGridSize" ||
+          MemberName == "maxThreadsDim") {
+        // Similar code in ASTTraversal.cpp
+        TmplArg = "<int *>";
+      }
+      addReplacement(ME->getMemberLoc(), "get_" + ReplacementStr + TmplArg + "()");
       requestFeature(
           PropToGetFeatureMap.at(ME->getMemberNameInfo().getAsString()), ME);
     }
@@ -743,7 +865,6 @@ void ExprAnalysis::analyzeExpr(const ExplicitCastExpr *Cast) {
 void ExprAnalysis::analyzeExpr(const CallExpr *CE) {
   // To set the RefString
   dispatch(CE->getCallee());
-
   // If the callee requires rewrite, get the rewriter
   if (!CallExprRewriterFactoryBase::RewriterMap)
     return;
@@ -757,69 +878,69 @@ void ExprAnalysis::analyzeExpr(const CallExpr *CE) {
       // if the function is NoRewrite
       // Only change the function name in the spelling loc and
       // applyAllSubExprRepl
-      if (Result.hasValue()) {
-        auto ResultStr = Result.getValue();
+      if (Result.has_value()) {
+        auto ResultStr = Result.value();
         addExtReplacement(std::make_shared<ExtReplacement>(
             SM, SM.getSpellingLoc(CE->getBeginLoc()), getCalleeName(CE).size(),
             ResultStr, nullptr));
         Rewriter->Analyzer.applyAllSubExprRepl();
       }
     } else {
-      if (Result.hasValue()) {
-        auto ResultStr = Result.getValue();
+      if (Result.has_value()) {
+        auto ResultStr = Result.value();
         auto LocStr =
             getCombinedStrFromLoc(SM.getSpellingLoc(CE->getBeginLoc()));
         auto &FCIMMR =
             dpct::DpctGlobalInfo::getFunctionCallInMacroMigrateRecord();
-        if (auto UDRFactory =
-                std::dynamic_pointer_cast<UserDefinedRewriterFactory>(
-                    Itr->second)) {
-          for (auto ItHeader = UDRFactory->Includes.begin();
-               ItHeader != UDRFactory->Includes.end(); ItHeader++) {
-            DpctGlobalInfo::getInstance().insertHeader(CE->getBeginLoc(),
-                                                       *ItHeader);
-          }
-        }
         if (FCIMMR.find(LocStr) != FCIMMR.end() &&
             FCIMMR.find(LocStr)->second.compare(ResultStr) &&
             !isExprStraddle(CE)) {
           Rewriter->report(Diagnostics::CANNOT_UNIFY_FUNCTION_CALL_IN_MACOR,
                            false, RefString);
-        } else {
-          FCIMMR[LocStr] = ResultStr;
-
-          // When migrating thrust API with usmnone and raw-ptr,
-          // the CallExpr will be rewritten into an if-else stmt,
-          // DPCT needs to remove the following semicolon.
-          std::string EndBracket =
-              "}" + std::string(
-                        getNL(getStmtExpansionSourceRange(CE).getBegin(), SM));
-          if (ResultStr.length() > EndBracket.length() &&
-              ResultStr.substr(ResultStr.length() - EndBracket.length(),
-                               EndBracket.length()) == EndBracket) {
-            auto EndLoc = Lexer::getLocForEndOfToken(
-                getStmtExpansionSourceRange(CE).getEnd(), 0, SM,
-                DpctGlobalInfo::getContext().getLangOpts());
-            Token Tok;
-            Lexer::getRawToken(EndLoc, Tok, SM,
-                               DpctGlobalInfo::getContext().getLangOpts(),
-                               true);
-            if (Tok.getKind() == tok::semi) {
-              DpctGlobalInfo::getInstance().addReplacement(
-                  std::make_shared<ExtReplacement>(SM, EndLoc, 1, "", nullptr));
-            }
-          }
-
-          addReplacement(CE, ResultStr);
-          Rewriter->Analyzer.applyAllSubExprRepl();
-          return;
         }
+        FCIMMR[LocStr] = ResultStr;
+        // When migrating thrust API with usmnone and raw-ptr,
+        // the CallExpr will be rewritten into an if-else stmt,
+        // DPCT needs to remove the following semicolon.
+        std::string EndBracket =
+            "}" + std::string(
+                      getNL(getStmtExpansionSourceRange(CE).getBegin(), SM));
+        if (ResultStr.length() > EndBracket.length() &&
+            ResultStr.substr(ResultStr.length() - EndBracket.length(),
+                             EndBracket.length()) == EndBracket) {
+          auto EndLoc = Lexer::getLocForEndOfToken(
+              getStmtExpansionSourceRange(CE).getEnd(), 0, SM,
+              DpctGlobalInfo::getContext().getLangOpts());
+          Token Tok;
+          Lexer::getRawToken(EndLoc, Tok, SM,
+                             DpctGlobalInfo::getContext().getLangOpts(),
+                             true);
+          if (Tok.getKind() == tok::semi) {
+            DpctGlobalInfo::getInstance().addReplacement(
+                std::make_shared<ExtReplacement>(SM, EndLoc, 1, "", nullptr));
+          }
+        }
+
+        addReplacement(CE, ResultStr);
+        Rewriter->Analyzer.applyAllSubExprRepl();
+        return;
       }
     }
   }
   // If the callee does not need rewrite, analyze the args
   for (auto Arg : CE->arguments())
     analyzeArgument(Arg);
+
+  if (auto FD = DpctGlobalInfo::getParentFunction(CE)) {
+    if (auto F = DpctGlobalInfo::getInstance().findDeviceFunctionDecl(FD)) {
+      if (auto C = F->getFuncInfo()->findCallee(CE)) {
+        auto Extra = C->getExtraArguments();
+        if (Extra.empty())
+          return;
+        addReplacement(C->getExtraArgLoc() - SrcBegin, 0, Extra);
+      }
+    }
+  }
 }
 
 void ExprAnalysis::analyzeExpr(const CXXMemberCallExpr *CMCE) {
@@ -836,8 +957,8 @@ void ExprAnalysis::analyzeExpr(const CXXMemberCallExpr *CMCE) {
       if (Itr != CallExprRewriterFactoryBase::MethodRewriterMap->end()) {
         auto Rewriter = Itr->second->create(CMCE);
         auto Result = Rewriter->rewrite();
-        if (Result.hasValue()) {
-          auto ResultStr = Result.getValue();
+        if (Result.has_value()) {
+          auto ResultStr = Result.value();
           addReplacement(CMCE, ResultStr);
           Rewriter->Analyzer.applyAllSubExprRepl();
           return;
@@ -864,7 +985,8 @@ void ExprAnalysis::analyzeExpr(const ReturnStmt *RS) {
   dispatch(RS->getRetValue());
 }
 
-void ExprAnalysis::analyzeExpr(const LambdaExpr *LE) {
+
+void ExprAnalysis::removeCUDADeviceAttr(const LambdaExpr *LE) {
   // E.g.,
   // my_kernel<<<1, 1>>>([=] __device__(int idx) { idx++; });
   // The "__device__" attribute need to be removed.
@@ -875,6 +997,10 @@ void ExprAnalysis::analyzeExpr(const LambdaExpr *LE) {
       }
     }
   }
+}
+
+void ExprAnalysis::analyzeExpr(const LambdaExpr *LE) {
+  removeCUDADeviceAttr(LE);
   // TODO: Need to handle capture ([=] in lambda) if required in the future
   for (const auto &Param : LE->getCallOperator()->parameters()) {
     analyzeType(Param->getTypeSourceInfo()->getTypeLoc(), LE);
@@ -926,9 +1052,18 @@ void ExprAnalysis::analyzeType(TypeLoc TL, const Expr *CSCE) {
         TYPELOC_CAST(TypedefTypeLoc).getTypedefNameDecl()->getName().str();
     break;
   case TypeLoc::Builtin:
-  case TypeLoc::Record:
-    TyName += DpctGlobalInfo::getTypeName(TL.getType());
+  case TypeLoc::Record: {
+    TyName = DpctGlobalInfo::getTypeName(TL.getType());
+    auto Itr = TypeLocRewriterFactoryBase::TypeLocRewriterMap->find(TyName);
+    if (Itr != TypeLocRewriterFactoryBase::TypeLocRewriterMap->end()) {
+      auto Rewriter = Itr->second->create(TL);
+      auto Result = Rewriter->rewrite();
+      if (Result.has_value())
+        addReplacement(SM.getExpansionLoc(SR.getBegin()),
+                       SM.getExpansionLoc(SR.getEnd()), CSCE, Result.value());
+    }
     break;
+  }
   case TypeLoc::TemplateTypeParm:
     if (auto D = TYPELOC_CAST(TemplateTypeParmTypeLoc).getDecl()) {
       return addReplacement(TL.getBeginLoc(), TL.getEndLoc(), CSCE,
@@ -946,8 +1081,8 @@ void ExprAnalysis::analyzeType(TypeLoc TL, const Expr *CSCE) {
     if (Itr != TypeLocRewriterFactoryBase::TypeLocRewriterMap->end()) {
       auto Rewriter = Itr->second->create(TSTL);
       auto Result = Rewriter->rewrite();
-      if (Result.hasValue()) {
-        auto ResultStr = Result.getValue();
+      if (Result.has_value()) {
+        auto ResultStr = Result.value();
         // Since Parser splits ">>" or ">>>" to ">" when parse template
         // the SR.getEnd location might be a "scratch space" location.
         // Therfore, need to apply SM.getExpansionLoc before call addReplacement.
@@ -982,12 +1117,14 @@ void ExprAnalysis::analyzeType(TypeLoc TL, const Expr *CSCE) {
       requestHelperFeatureForTypeNames(TyName, SR.getBegin());
     }
   }
+
+  auto Range = getDefinitionRange(SR.getBegin(), SR.getEnd());
   if (MapNames::replaceName(MapNames::TypeNamesMap, TyName)) {
-    addReplacement(SR.getBegin(), SR.getEnd(), CSCE, TyName);
+    addReplacement(Range.getBegin(), Range.getEnd(), CSCE, TyName);
   } else if (MapNames::replaceName(MapNames::CuDNNTypeNamesMap, TyName)) {
-    addReplacement(SR.getBegin(), SR.getEnd(), CSCE, TyName);
+    addReplacement(Range.getBegin(), Range.getEnd(), CSCE, TyName);
   } else if (getFinalCastTypeNameStr(TyName) != TyName) {
-    addReplacement(SR.getBegin(), SR.getEnd(), CSCE,
+    addReplacement(Range.getBegin(), Range.getEnd(), CSCE,
                    getFinalCastTypeNameStr(TyName));
   }
 }
@@ -1372,6 +1509,8 @@ void KernelArgumentAnalysis::dispatch(const Stmt *Expression) {
     ANALYZE_EXPR(UnaryOperator)
     ANALYZE_EXPR(CXXDependentScopeMemberExpr)
     ANALYZE_EXPR(MaterializeTemporaryExpr)
+    ANALYZE_EXPR(LambdaExpr)
+    ANALYZE_EXPR(CXXTemporaryObjectExpr)
   default:
     return ExprAnalysis::dispatch(Expression);
   }
@@ -1408,6 +1547,10 @@ KernelConfigAnalysis::calculateWorkgroupSize(const CXXConstructExpr *Ctor) {
 
 void KernelArgumentAnalysis::analyzeExpr(const MaterializeTemporaryExpr *MTE) {
   KernelArgumentAnalysis::dispatch(MTE->getSubExpr());
+}
+
+void KernelArgumentAnalysis::analyzeExpr(const CXXTemporaryObjectExpr *Temp) {
+  ExprAnalysis::dispatch(Temp);
 }
 
 void KernelArgumentAnalysis::analyzeExpr(
@@ -1482,12 +1625,21 @@ void KernelArgumentAnalysis::analyzeExpr(const MemberExpr *ME) {
   }
 
   if (auto RD = ME->getBase()->getType()->getAsCXXRecordDecl()) {
-    if (!RD->isStandardLayout()) {
+    if (!RD->isTriviallyCopyable()) {
       IsRedeclareRequired = true;
     }
   }
   Base::analyzeExpr(ME);
 }
+
+void KernelArgumentAnalysis::analyzeExpr(const LambdaExpr *LE) {
+  Base::analyzeExpr(LE);
+  // Lambda function can be passed to kernel function directly.
+  // So, not need to redeclare a variable for lambda function passed to kernel
+  // function
+  IsRedeclareRequired = false;
+}
+
 
 void KernelArgumentAnalysis::analyzeExpr(const UnaryOperator *UO) {
   if (UO->getOpcode() == UO_Deref) {
@@ -1754,7 +1906,10 @@ void KernelConfigAnalysis::analyzeExpr(const CXXConstructExpr *Ctor) {
           SM.getExpansionRange(Ctor->getEndLoc()).getEnd(),
           CtorString.replace(CtorString.length() - 2, 2, ")"));
     }
-    return addReplacement(Ctor,
+
+    auto Range =
+        getRangeInRange(Ctor, CallSpellingBegin, CallSpellingEnd, false);
+    return addReplacement(Range.first, Range.second,
                           CtorString.replace(CtorString.length() - 2, 2, ")"));
   }
   return ArgumentAnalysis::analyzeExpr(Ctor);
@@ -1764,6 +1919,7 @@ std::vector<std::string>
 KernelConfigAnalysis::getCtorArgs(const CXXConstructExpr *Ctor) {
   std::vector<std::string> Args;
   ArgumentAnalysis A(IsInMacroDefine);
+  A.setCallSpelling(CallSpellingBegin, CallSpellingEnd);
   for (auto Arg : Ctor->arguments())
     Args.emplace_back(getCtorArg(A, Arg));
   return Args;
@@ -1777,20 +1933,17 @@ void KernelConfigAnalysis::analyze(const Expr *E, unsigned int Idx,
   if (IsInMacroDefine && SM.isMacroArgExpansion(E->getBeginLoc())) {
     Reversed = false;
     DirectRef = true;
-    if (ArgIndex == 3 && isPredefinedStreamHandle(E)) {
+    if (ArgIndex == 3 && isDefaultStream(E)) {
       addReplacement("0");
       return;
     }
-    initArgumentExpr(E);
-    return;
   }
 
   DoReverse = ReverseIfNeed;
-  if (ArgIndex == 3 && isPredefinedStreamHandle(E)) {
+  if (ArgIndex == 3 && isDefaultStream(E)) {
     addReplacement("0");
     return;
   }
-
   ArgumentAnalysis::analyze(E);
 
   if (getTargetExpr()->IgnoreImplicit()->getStmtClass() ==
@@ -1845,7 +1998,6 @@ std::string ArgumentAnalysis::getRewriteString() {
           SubRepl->getLength(), SubRepl->getReplacementText().str());
     }
   }
-
   return SRs.getReplacedString();
 }
 

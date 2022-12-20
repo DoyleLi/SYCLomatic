@@ -47,8 +47,10 @@ long long int test_abs(long long int a) { return abs(a); }
 // CHECK: long int test_abs(long int in) { return abs(in); }
 long int test_abs(long int in) { return abs(in); }
 
+// CHECK: float test_abs(float in) { return abs(in); }
 float test_abs(float in) { return abs(in); }
 
+// CHECK: double test_abs(double in) { return abs(in); }
 double test_abs(double in) { return abs(in); }
 
 // CHECK: float test_fabs(float in) { return fabs(in); }

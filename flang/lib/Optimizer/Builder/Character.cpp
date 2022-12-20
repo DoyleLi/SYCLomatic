@@ -11,9 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "flang/Optimizer/Builder/Character.h"
-#include "flang/Lower/Todo.h"
 #include "flang/Optimizer/Builder/DoLoopHelper.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
+#include "flang/Optimizer/Builder/Todo.h"
 #include "llvm/Support/Debug.h"
 #include <optional>
 
@@ -372,7 +372,7 @@ fir::factory::CharacterExprHelper::createCharacterTemp(mlir::Type type,
   if (typeLen == fir::CharacterType::unknownLen())
     lenParams.push_back(len);
   auto ref = builder.allocateLocal(loc, charTy, "", ".chrtmp",
-                                   /*shape=*/llvm::None, lenParams);
+                                   /*shape=*/std::nullopt, lenParams);
   return {ref, len};
 }
 
@@ -664,9 +664,14 @@ mlir::Value fir::factory::CharacterExprHelper::extractCodeFromSingleton(
 
 mlir::Value
 fir::factory::CharacterExprHelper::readLengthFromBox(mlir::Value box) {
+  auto charTy = recoverCharacterType(box.getType());
+  return readLengthFromBox(box, charTy);
+}
+
+mlir::Value fir::factory::CharacterExprHelper::readLengthFromBox(
+    mlir::Value box, fir::CharacterType charTy) {
   auto lenTy = builder.getCharacterLengthType();
   auto size = builder.create<fir::BoxEleSizeOp>(loc, lenTy, box);
-  auto charTy = recoverCharacterType(box.getType());
   auto bits = builder.getKindMap().getCharacterBitsize(charTy.getFKind());
   auto width = bits / 8;
   if (width > 1) {
@@ -718,7 +723,10 @@ mlir::Value fir::factory::createCharacterProcedureTuple(
     mlir::Value addr, mlir::Value len) {
   mlir::TupleType tupleType = argTy.cast<mlir::TupleType>();
   addr = builder.createConvert(loc, tupleType.getType(0), addr);
-  len = builder.createConvert(loc, tupleType.getType(1), len);
+  if (len)
+    len = builder.createConvert(loc, tupleType.getType(1), len);
+  else
+    len = builder.create<fir::UndefOp>(loc, tupleType.getType(1));
   mlir::Value tuple = builder.create<fir::UndefOp>(loc, tupleType);
   tuple = builder.create<fir::InsertValueOp>(
       loc, tupleType, tuple, addr,

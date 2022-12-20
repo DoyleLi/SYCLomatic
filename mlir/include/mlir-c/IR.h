@@ -62,7 +62,6 @@ DEFINE_C_API_STRUCT(MlirIdentifier, const void);
 DEFINE_C_API_STRUCT(MlirLocation, const void);
 DEFINE_C_API_STRUCT(MlirModule, const void);
 DEFINE_C_API_STRUCT(MlirType, const void);
-DEFINE_C_API_STRUCT(MlirTypeID, const void);
 DEFINE_C_API_STRUCT(MlirValue, const void);
 
 #undef DEFINE_C_API_STRUCT
@@ -127,9 +126,14 @@ mlirContextGetNumLoadedDialects(MlirContext context);
 MLIR_CAPI_EXPORTED MlirDialect mlirContextGetOrLoadDialect(MlirContext context,
                                                            MlirStringRef name);
 
-/// Set threading mode (must be set to false to print-ir-after-all).
+/// Set threading mode (must be set to false to mlir-print-ir-after-all).
 MLIR_CAPI_EXPORTED void mlirContextEnableMultithreading(MlirContext context,
                                                         bool enable);
+
+/// Eagerly loads all available dialects registered with a context, making
+/// them available for use for IR construction.
+MLIR_CAPI_EXPORTED void
+mlirContextLoadAllAvailableDialects(MlirContext context);
 
 /// Returns whether the given fully-qualified operation (i.e.
 /// 'dialect.operation') is registered with the context. This will return true
@@ -157,6 +161,47 @@ MLIR_CAPI_EXPORTED bool mlirDialectEqual(MlirDialect dialect1,
 
 /// Returns the namespace of the given dialect.
 MLIR_CAPI_EXPORTED MlirStringRef mlirDialectGetNamespace(MlirDialect dialect);
+
+//===----------------------------------------------------------------------===//
+// DialectHandle API.
+// Registration entry-points for each dialect are declared using the common
+// MLIR_DECLARE_DIALECT_REGISTRATION_CAPI macro, which takes the dialect
+// API name (i.e. "Func", "Tensor", "Linalg") and namespace (i.e. "func",
+// "tensor", "linalg"). The following declarations are produced:
+//
+//   /// Gets the above hook methods in struct form for a dialect by namespace.
+//   /// This is intended to facilitate dynamic lookup and registration of
+//   /// dialects via a plugin facility based on shared library symbol lookup.
+//   const MlirDialectHandle *mlirGetDialectHandle__{NAMESPACE}__();
+//
+// This is done via a common macro to facilitate future expansion to
+// registration schemes.
+//===----------------------------------------------------------------------===//
+
+struct MlirDialectHandle {
+  const void *ptr;
+};
+typedef struct MlirDialectHandle MlirDialectHandle;
+
+#define MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Name, Namespace)                \
+  MLIR_CAPI_EXPORTED MlirDialectHandle mlirGetDialectHandle__##Namespace##__()
+
+/// Returns the namespace associated with the provided dialect handle.
+MLIR_CAPI_EXPORTED
+MlirStringRef mlirDialectHandleGetNamespace(MlirDialectHandle);
+
+/// Inserts the dialect associated with the provided dialect handle into the
+/// provided dialect registry
+MLIR_CAPI_EXPORTED void mlirDialectHandleInsertDialect(MlirDialectHandle,
+                                                       MlirDialectRegistry);
+
+/// Registers the dialect associated with the provided dialect handle.
+MLIR_CAPI_EXPORTED void mlirDialectHandleRegisterDialect(MlirDialectHandle,
+                                                         MlirContext);
+
+/// Loads the dialect associated with the provided dialect handle.
+MLIR_CAPI_EXPORTED MlirDialect mlirDialectHandleLoadDialect(MlirDialectHandle,
+                                                            MlirContext);
 
 //===----------------------------------------------------------------------===//
 // DialectRegistry API.
@@ -331,11 +376,12 @@ MLIR_CAPI_EXPORTED void
 mlirOpPrintingFlagsElideLargeElementsAttrs(MlirOpPrintingFlags flags,
                                            intptr_t largeElementLimit);
 
-/// Enable printing of debug information. If 'prettyForm' is set to true,
-/// debug information is printed in a more readable 'pretty' form. Note: The
-/// IR generated with 'prettyForm' is not parsable.
+/// Enable or disable printing of debug information (based on `enable`). If
+/// 'prettyForm' is set to true, debug information is printed in a more readable
+/// 'pretty' form. Note: The IR generated with 'prettyForm' is not parsable.
 MLIR_CAPI_EXPORTED void
-mlirOpPrintingFlagsEnableDebugInfo(MlirOpPrintingFlags flags, bool prettyForm);
+mlirOpPrintingFlagsEnableDebugInfo(MlirOpPrintingFlags flags, bool enable,
+                                   bool prettyForm);
 
 /// Always print operations in the generic form.
 MLIR_CAPI_EXPORTED void
@@ -476,6 +522,11 @@ MLIR_CAPI_EXPORTED void mlirOperationPrintWithFlags(MlirOperation op,
                                                     MlirStringCallback callback,
                                                     void *userData);
 
+/// Same as mlirOperationPrint but writing the bytecode format out.
+MLIR_CAPI_EXPORTED void mlirOperationWriteBytecode(MlirOperation op,
+                                                   MlirStringCallback callback,
+                                                   void *userData);
+
 /// Prints an operation to stderr.
 MLIR_CAPI_EXPORTED void mlirOperationDump(MlirOperation op);
 
@@ -558,6 +609,9 @@ MLIR_CAPI_EXPORTED MlirBlock mlirBlockCreate(intptr_t nArgs,
 
 /// Takes a block owned by the caller and destroys it.
 MLIR_CAPI_EXPORTED void mlirBlockDestroy(MlirBlock block);
+
+/// Detach a block from the owning region and assume ownership.
+MLIR_CAPI_EXPORTED void mlirBlockDetach(MlirBlock block);
 
 /// Checks whether a block is null.
 static inline bool mlirBlockIsNull(MlirBlock block) { return !block.ptr; }
@@ -756,19 +810,6 @@ MLIR_CAPI_EXPORTED bool mlirIdentifierEqual(MlirIdentifier ident,
 
 /// Gets the string value of the identifier.
 MLIR_CAPI_EXPORTED MlirStringRef mlirIdentifierStr(MlirIdentifier ident);
-
-//===----------------------------------------------------------------------===//
-// TypeID API.
-//===----------------------------------------------------------------------===//
-
-/// Checks whether a type id is null.
-static inline bool mlirTypeIDIsNull(MlirTypeID typeID) { return !typeID.ptr; }
-
-/// Checks if two type ids are equal.
-MLIR_CAPI_EXPORTED bool mlirTypeIDEqual(MlirTypeID typeID1, MlirTypeID typeID2);
-
-/// Returns the hash value of the type id.
-MLIR_CAPI_EXPORTED size_t mlirTypeIDHashValue(MlirTypeID typeID);
 
 //===----------------------------------------------------------------------===//
 // Symbol and SymbolTable API.

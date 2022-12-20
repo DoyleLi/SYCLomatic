@@ -33,7 +33,7 @@ DiagnosticInfoMIROptimization::MachineArgument::MachineArgument(
 Optional<uint64_t>
 MachineOptimizationRemarkEmitter::computeHotness(const MachineBasicBlock &MBB) {
   if (!MBFI)
-    return None;
+    return std::nullopt;
 
   return MBFI->getBlockProfileCount(&MBB);
 }
@@ -53,10 +53,8 @@ void MachineOptimizationRemarkEmitter::emit(
   LLVMContext &Ctx = MF.getFunction().getContext();
 
   // Only emit it if its hotness meets the threshold.
-  if (OptDiag.getHotness().getValueOr(0) <
-      Ctx.getDiagnosticsHotnessThreshold()) {
+  if (OptDiag.getHotness().value_or(0) < Ctx.getDiagnosticsHotnessThreshold())
     return;
-  }
 
   Ctx.diagnose(OptDiag);
 }

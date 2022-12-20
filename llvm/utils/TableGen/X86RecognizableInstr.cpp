@@ -63,26 +63,8 @@ unsigned X86Disassembler::getRegOperandSize(const Record *RegRec) {
 }
 
 unsigned X86Disassembler::getMemOperandSize(const Record *MemRec) {
-  if (MemRec->isSubClassOf("Operand")) {
-    StringRef Name =
-        MemRec->getValueAsDef("ParserMatchClass")->getValueAsString("Name");
-    if (Name == "Mem8")
-      return 8;
-    if (Name == "Mem16")
-      return 16;
-    if (Name == "Mem32")
-      return 32;
-    if (Name == "Mem64")
-      return 64;
-    if (Name == "Mem80")
-      return 80;
-    if (Name == "Mem128")
-      return 128;
-    if (Name == "Mem256")
-      return 256;
-    if (Name == "Mem512")
-      return 512;
-  }
+  if (MemRec->isSubClassOf("X86MemOperand"))
+    return MemRec->getValueAsInt("Size");
 
   llvm_unreachable("Memory operand's size not known!");
 }
@@ -310,11 +292,6 @@ InstructionContext RecognizableInstr::insnContext() const {
       insnContext = IC_VEX_L_OPSIZE;
     else if (OpPrefix == X86Local::PD && HasVEX_W)
       insnContext = IC_VEX_W_OPSIZE;
-    else if (OpPrefix == X86Local::PD && Is64Bit &&
-             AdSize == X86Local::AdSize32)
-      insnContext = IC_64BIT_VEX_OPSIZE_ADSIZE;
-    else if (OpPrefix == X86Local::PD && Is64Bit)
-      insnContext = IC_64BIT_VEX_OPSIZE;
     else if (OpPrefix == X86Local::PD)
       insnContext = IC_VEX_OPSIZE;
     else if (HasVEX_L && OpPrefix == X86Local::XS)
@@ -568,6 +545,18 @@ void RecognizableInstr::emitInstructionSpecifier() {
 
     HANDLE_OPERAND(roRegister)
     HANDLE_OPTIONAL(immediate)
+    break;
+  case X86Local::MRMDestMem4VOp3CC:
+    // Operand 1 is a register operand in the Reg/Opcode field.
+    // Operand 2 is a register operand in the R/M field.
+    // Operand 3 is VEX.vvvv
+    // Operand 4 is condition code.
+    assert(numPhysicalOperands == 4 &&
+           "Unexpected number of operands for MRMDestMem4VOp3CC");
+    HANDLE_OPERAND(roRegister)
+    HANDLE_OPERAND(memory)
+    HANDLE_OPERAND(vvvvRegister)
+    HANDLE_OPERAND(opcodeModifier)
     break;
   case X86Local::MRMDestMem:
   case X86Local::MRMDestMemFSIB:
@@ -831,6 +820,7 @@ void RecognizableInstr::emitDecodePath(DisassemblerTables &tables) const {
     filter = std::make_unique<ModFilter>(true);
     break;
   case X86Local::MRMDestMem:
+  case X86Local::MRMDestMem4VOp3CC:
   case X86Local::MRMDestMemFSIB:
   case X86Local::MRMSrcMem:
   case X86Local::MRMSrcMemFSIB:
@@ -881,7 +871,8 @@ void RecognizableInstr::emitDecodePath(DisassemblerTables &tables) const {
 
   if (Form == X86Local::AddRegFrm || Form == X86Local::MRMSrcRegCC ||
       Form == X86Local::MRMSrcMemCC || Form == X86Local::MRMXrCC ||
-      Form == X86Local::MRMXmCC || Form == X86Local::AddCCFrm) {
+      Form == X86Local::MRMXmCC || Form == X86Local::AddCCFrm ||
+      Form == X86Local::MRMDestMem4VOp3CC) {
     uint8_t Count = Form == X86Local::AddRegFrm ? 8 : 16;
     assert(((opcodeToSet % Count) == 0) && "ADDREG_FRM opcode not aligned");
 

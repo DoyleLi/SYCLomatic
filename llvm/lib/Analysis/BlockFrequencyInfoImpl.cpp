@@ -47,7 +47,7 @@ cl::opt<bool> CheckBFIUnknownBlockQueries(
              "for debugging missed BFI updates"));
 
 cl::opt<bool> UseIterativeBFIInference(
-    "use-iterative-bfi-inference", cl::init(false), cl::Hidden, cl::ZeroOrMore,
+    "use-iterative-bfi-inference", cl::Hidden,
     cl::desc("Apply an iterative post-processing to infer correct BFI counts"));
 
 cl::opt<unsigned> IterativeBFIMaxIterationsPerBlock(
@@ -599,7 +599,7 @@ BlockFrequencyInfoImplBase::getProfileCountFromFreq(const Function &F,
                                                     bool AllowSynthetic) const {
   auto EntryCount = F.getEntryCount(AllowSynthetic);
   if (!EntryCount)
-    return None;
+    return std::nullopt;
   // Use 128 bit APInt to do the arithmetic to avoid overflow.
   APInt BlockCount(128, EntryCount->getCount());
   APInt BlockFreq(128, Freq);

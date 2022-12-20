@@ -149,6 +149,11 @@ DPCT_NON_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::opt<bool, true>), CheckUnico
            llvm::cl::desc("Enable detection and warnings about Unicode constructs that can be exploited by using\n"
                    "bi-directional formatting codes and homoglyphs in identifiers. Default: off.\n"),
            llvm::cl::cat(DPCTCat), llvm::cl::location(CheckUnicodeSecurityFlag))
+
+DPCT_NON_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::opt<bool, true>), EnablepProfiling, "enable-profiling",
+           llvm::cl::desc("Enable sycl queue profiling in helper functions. Default: off.\n"),
+           llvm::cl::cat(DPCTCat), llvm::cl::location(EnablepProfilingFlag))
+
 DPCT_NON_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::opt<bool, true>), SyclNamedLambda, "sycl-named-lambda",
            llvm::cl::desc("Generates kernels with the kernel name. Default: off.\n"),
            llvm::cl::cat(DPCTCat), llvm::cl::location(SyclNamedLambdaFlag))
@@ -258,12 +263,12 @@ DPCT_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::opt<HelperFilesCustomizationLeve
             "Generate a complete set of helper header files and place them in the --out-root\n"
             "directory.", false)
            ),
-           llvm::cl::desc("Customize the helper header files for migrated code. The values are:\n"),
+           llvm::cl::desc("DEPRECATED: Customize the helper header files for migrated code. The values are:\n"),
            llvm::cl::init(HelperFilesCustomizationLevel::HFCL_None), llvm::cl::value_desc("value"), llvm::cl::cat(DPCTCat),
            llvm::cl::Optional)
 
 DPCT_NON_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::opt<std::string>), CustomHelperFileName, "custom-helper-name",
-        llvm::cl::desc("Specifies the helper headers folder name and main helper header file name.\n"
+        llvm::cl::desc("DEPRECATED: Specifies the helper headers folder name and main helper header file name.\n"
         "Default: dpct."),
         llvm::cl::init("dpct"), llvm::cl::value_desc("name"), llvm::cl::cat(DPCTCat), llvm::cl::Optional)
 
@@ -295,7 +300,7 @@ DPCT_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::list<ExplicitNamespace>), UseExp
                                      "be used with other values.",
                                      false),
              DPCT_OPT_ENUM("cl", int(ExplicitNamespace::EN_CL),
-               "Generate code with cl::sycl:: namespace. Cannot be used with "
+               "DEPRECATED: Generate code with cl::sycl:: namespace. Cannot be used with "
                "sycl or sycl-math values.",
                false),
              DPCT_OPT_ENUM("dpct", int(ExplicitNamespace::EN_DPCT),
@@ -315,21 +320,33 @@ DPCT_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::list<ExplicitNamespace>), UseExp
            "Possible values are:"),
            llvm::cl::CommaSeparated, llvm::cl::value_desc("value"), llvm::cl::cat(DPCTCat), llvm::cl::ZeroOrMore)
 
-// When more dpcpp extensions are implemented, more extension names will be
-// added into the value of option --no-dpcpp-extensions, currently only
-// Enqueued barriers is supported.
-DPCT_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::list<DPCPPExtensions>), NoDPCPPExtensions, "no-dpcpp-extensions",
+DPCT_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::bits<DPCPPExtensionsDefaultEnabled>), NoDPCPPExtensions, "no-dpcpp-extensions",
            DPCT_OPTION_VALUES(
              DPCT_OPT_ENUM("enqueued_barriers",
-                                     int(DPCPPExtensions::Ext_EnqueueBarrier),
+                                     int(DPCPPExtensionsDefaultEnabled::ExtDE_EnqueueBarrier),
                                      "Enqueued barriers extension.",
-                                     false)
+                                     false),
+             DPCT_OPT_ENUM("device_info",
+                                     int(DPCPPExtensionsDefaultEnabled::ExtDE_DeviceInfo),
+                                     "Intel's Extensions for Device Information.",
+                                     false)                            
            ),
            llvm::cl::desc("Comma separated list of extensions not to be used in migrated "
            "code.\n"
            "By default, these extensions will be used in migrated code."),
-           llvm::cl::CommaSeparated, llvm::cl::value_desc("value"), llvm::cl::cat(DPCTCat), llvm::cl::ZeroOrMore,
-           llvm::cl::cb<void, DPCPPExtensions>(DpctGlobalInfo::setExtensionUnused))
+           llvm::cl::CommaSeparated, llvm::cl::value_desc("value"), llvm::cl::cat(DPCTCat), llvm::cl::ZeroOrMore)
+
+DPCT_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::bits<DPCPPExtensionsDefaultDisabled>), UseDPCPPExtensions, "use-dpcpp-extensions",
+           DPCT_OPTION_VALUES(
+             DPCT_OPT_ENUM("c_cxx_standard_library",
+                                     int(DPCPPExtensionsDefaultDisabled::ExtDD_CCXXStandardLibrary),
+                                     "A set of functions from the C and C++ standard libraries that are allowed to\n"
+                                     "be used in SYCL device code.",
+                                     false)
+           ),
+           llvm::cl::desc("A comma separated list of extensions to be used in migrated code.\n"
+           "By default, these extensions are not used in migrated code."),
+           llvm::cl::CommaSeparated, llvm::cl::value_desc("value"), llvm::cl::cat(DPCTCat), llvm::cl::ZeroOrMore)
 
 DPCT_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::bits<ExperimentalFeatures>), Experimentals, "use-experimental-features",
            DPCT_OPTION_VALUES(
@@ -376,13 +393,13 @@ DPCT_NON_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::opt<bool>), NoIncrementalMig
         llvm::cl::cat(DPCTCat), llvm::cl::init(false))
 
 DPCT_NON_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::opt<std::string>), QueryApiMapping, "query-api-mapping",
-        llvm::cl::desc("Provides functionally compatible SYCL API mapping for CUDA API."),
+        llvm::cl::desc("Outputs to stdout functionally compatible SYCL API mapping for CUDA API."),
         llvm::cl::value_desc("api"), llvm::cl::cat(DPCTCat), llvm::cl::Optional)
 
 DPCT_NON_ENUM_OPTION(DPCT_OPT_TYPE(static llvm::cl::opt<std::string>), AnalysisScope, "analysis-scope-path",
         llvm::cl::desc("The directory path for the analysis scope of the source tree that "
              "needs to be migrated.\n"
-             "Default: the value of --in-root"),
+             "Default: the value of --in-root."),
         llvm::cl::value_desc("dir"), llvm::cl::cat(DPCTCat))
 
 #endif // !DPCT_OPTIONS_IN_CLANG_DPCT

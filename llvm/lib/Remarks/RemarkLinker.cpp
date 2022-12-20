@@ -66,7 +66,7 @@ void RemarkLinker::setExternalFilePrependPath(StringRef PrependPathIn) {
 }
 
 // Discard remarks with no source location.
-static bool shouldKeepRemark(const Remark &R) { return R.Loc.hasValue(); }
+static bool shouldKeepRemark(const Remark &R) { return R.Loc.has_value(); }
 
 Error RemarkLinker::link(StringRef Buffer, Optional<Format> RemarkFormat) {
   if (!RemarkFormat) {
@@ -78,9 +78,9 @@ Error RemarkLinker::link(StringRef Buffer, Optional<Format> RemarkFormat) {
 
   Expected<std::unique_ptr<RemarkParser>> MaybeParser =
       createRemarkParserFromMeta(
-          *RemarkFormat, Buffer, /*StrTab=*/None,
+          *RemarkFormat, Buffer, /*StrTab=*/std::nullopt,
           PrependPath ? Optional<StringRef>(StringRef(*PrependPath))
-                      : Optional<StringRef>(None));
+                      : Optional<StringRef>());
   if (!MaybeParser)
     return MaybeParser.takeError();
 

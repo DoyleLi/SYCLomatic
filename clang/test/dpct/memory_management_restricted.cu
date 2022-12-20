@@ -377,6 +377,17 @@ void foobar() {
 
   //CHECK: MY_ERROR_CHECKER((d_Output = sycl::malloc_device<float>(1, q_ct1), 0));
   MY_ERROR_CHECKER(cudaMalloc((void **)&d_Output, sizeof(float)));
+
+  size_t free_mem, total_mem;
+
+  //CHECK: dpct::get_current_device().get_memory_info(free_mem, total_mem);
+  cudaMemGetInfo(&free_mem, &total_mem);
+  //CHECK: MY_ERROR_CHECKER((dpct::get_current_device().get_memory_info(free_mem, total_mem), 0));
+  MY_ERROR_CHECKER(cudaMemGetInfo(&free_mem, &total_mem));
+  //CHECK: dpct::get_current_device().get_memory_info(free_mem, total_mem);
+  cuMemGetInfo(&free_mem, &total_mem);
+  //CHECK: MY_ERROR_CHECKER((dpct::get_current_device().get_memory_info(free_mem, total_mem), 0));
+  MY_ERROR_CHECKER(cuMemGetInfo(&free_mem, &total_mem));
 }
 
 template <typename T>
@@ -393,4 +404,17 @@ void foo(int a, int b) {
   // CHECK-NEXT: *(c[0].Pos2) = (typename std::remove_pointer<decltype(c[0].Pos2)>::type)sycl::malloc_device(b, q_ct1);
   cudaMalloc((void **)&c[0].Pos1[0], b);
   cudaMalloc((void **)c[0].Pos2, b);
+}
+
+__managed__ char *a1;
+__managed__ char *a2;
+void foo2() {
+  // CHECK: *(a1.get_ptr()) = (char *)sycl::malloc_shared(4, q_ct1);
+  // CHECK-NEXT: *(a2.get_ptr()) = sycl::malloc_shared<char>(1, q_ct1);
+  // CHECK-NEXT: sycl::free(*(a1.get_ptr()), q_ct1);
+  // CHECK-NEXT: sycl::free(*(a2.get_ptr()), q_ct1);
+  cudaMallocManaged((void **)&a1, 4);
+  cudaMallocManaged((void **)&a2, sizeof(char));
+  cudaFree(a1);
+  cudaFree(a2);
 }

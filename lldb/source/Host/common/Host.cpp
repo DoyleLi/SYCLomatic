@@ -60,7 +60,6 @@
 #include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/Predicate.h"
-#include "lldb/Utility/ReproducerProvider.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/lldb-private-forward.h"
 #include "llvm/ADT/SmallString.h"
@@ -89,6 +88,10 @@ int __pthread_fchdir(int fildes);
 
 using namespace lldb;
 using namespace lldb_private;
+
+#if !defined(__APPLE__)
+void Host::SystemLog(llvm::StringRef message) { llvm::errs() << message; }
+#endif
 
 #if !defined(__APPLE__) && !defined(_WIN32)
 static thread_result_t
@@ -168,7 +171,7 @@ MonitorChildProcessThreadFunction(::pid_t pid,
   ::sigaction(SIGUSR1, &sigUsr1Action, nullptr);
 #endif // __linux__
 
-  while(1) {
+  while (true) {
     log = GetLog(LLDBLog::Process);
     LLDB_LOG(log, "::waitpid({0}, &status, 0)...", pid);
 
@@ -218,32 +221,6 @@ MonitorChildProcessThreadFunction(::pid_t pid,
 }
 
 #endif // #if !defined (__APPLE__) && !defined (_WIN32)
-
-#if !defined(__APPLE__)
-
-void Host::SystemLog(SystemLogType type, const char *format, va_list args) {
-  vfprintf(stderr, format, args);
-}
-
-#endif
-
-void Host::SystemLog(SystemLogType type, const char *format, ...) {
-  {
-    va_list args;
-    va_start(args, format);
-    SystemLog(type, format, args);
-    va_end(args);
-  }
-
-  Log *log = GetLog(LLDBLog::Host);
-  if (log && log->GetVerbose()) {
-    // Log to log channel. This allows testcases to grep for log output.
-    va_list args;
-    va_start(args, format);
-    log->VAPrintf(format, args);
-    va_end(args);
-  }
-}
 
 lldb::pid_t Host::GetCurrentProcessID() { return ::getpid(); }
 
@@ -524,8 +501,9 @@ Status Host::RunShellCommand(llvm::StringRef shell_path, const Args &args,
             error.SetErrorStringWithFormat(
                 "shell command output is too large to fit into a std::string");
           } else {
-            auto Buffer =
-                FileSystem::Instance().CreateDataBuffer(output_file_spec);
+            WritableDataBufferSP Buffer =
+                FileSystem::Instance().CreateWritableDataBuffer(
+                    output_file_spec);
             if (error.Success())
               command_output_ptr->assign(
                   reinterpret_cast<char *>(Buffer->GetBytes()),
@@ -574,6 +552,7 @@ bool Host::OpenFileInExternalEditor(const FileSpec &file_spec,
   return false;
 }
 
+bool Host::IsInteractiveGraphicSession() { return false; }
 #endif
 
 std::unique_ptr<Connection> Host::CreateDefaultConnection(llvm::StringRef url) {
@@ -634,20 +613,13 @@ void llvm::format_provider<WaitStatus>::format(const WaitStatus &WS,
 
 uint32_t Host::FindProcesses(const ProcessInstanceInfoMatch &match_info,
                              ProcessInstanceInfoList &process_infos) {
+  return FindProcessesImpl(match_info, process_infos);
+}
 
-  if (llvm::Optional<ProcessInstanceInfoList> infos =
-          repro::GetReplayProcessInstanceInfoList()) {
-    process_infos = *infos;
-    return process_infos.size();
-  }
+char SystemLogHandler::ID;
 
-  uint32_t result = FindProcessesImpl(match_info, process_infos);
+SystemLogHandler::SystemLogHandler() {}
 
-  if (repro::Generator *g = repro::Reproducer::Instance().GetGenerator()) {
-    g->GetOrCreate<repro::ProcessInfoProvider>()
-        .GetNewProcessInfoRecorder()
-        ->Record(process_infos);
-  }
-
-  return result;
+void SystemLogHandler::Emit(llvm::StringRef message) {
+  Host::SystemLog(message);
 }

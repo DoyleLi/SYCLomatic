@@ -42,28 +42,56 @@
 // DPCT_LABEL_BEGIN|non_local_include_dependency|
 // DPCT_DEPENDENCY_EMPTY
 // DPCT_CODE
-#include <CL/sycl.hpp>
+#include <sycl/sycl.hpp>
 
 // Memory management section:
 // device_pointer, device_reference, swap, device_iterator, malloc_device,
 // device_new, free_device, device_delete
 // DPCT_LABEL_END
 namespace dpct {
-
-// DPCT_LABEL_BEGIN|cl_sycl_alias|dpct
-// DPCT_DEPENDENCY_EMPTY
+namespace detail {
+// DPCT_LABEL_BEGIN|make_allocatable|dpct::detail
+// DPCT_DEPENDENCY_BEGIN
+// Memory|typedef_byte_t
+// DPCT_DEPENDENCY_END
 // DPCT_CODE
-namespace sycl = cl::sycl;
+template <typename T>
+struct make_allocatable
+{
+  using type = T;
+};
+
+template <>
+struct make_allocatable<void>
+{
+  using type = dpct::byte_t;
+};
 // DPCT_LABEL_END
+
+// DPCT_LABEL_BEGIN|__buffer_allocator|dpct::detail
+// DPCT_DEPENDENCY_BEGIN
+// DplExtrasMemory|make_allocatable
+// DPCT_DEPENDENCY_END
+// DPCT_CODE
+template <typename _DataT>
+using __buffer_allocator =
+#if __LIBSYCL_VERSION >= 50707
+    sycl::buffer_allocator<typename make_allocatable<_DataT>::type>;
+#else
+    sycl::buffer_allocator;
+#endif
+// DPCT_LABEL_END
+} // namespace detail
 
 // DPCT_LABEL_BEGIN|device_pointer_forward_decl|dpct
 // DPCT_DEPENDENCY_BEGIN
 // DplExtrasMemory|device_iterator_forward_decl_device_pointer
+// DplExtrasMemory|__buffer_allocator
 // DPCT_DEPENDENCY_END
 // DPCT_CODE
 #ifdef DPCT_USM_LEVEL_NONE
 template <typename T, sycl::access_mode Mode = sycl::access_mode::read_write,
-          typename Allocator = sycl::buffer_allocator>
+          typename Allocator = detail::__buffer_allocator<T>>
 class device_pointer;
 #else
 template <typename T> class device_pointer;
@@ -399,8 +427,8 @@ public:
 
   device_pointer_base(ValueType *p) : ptr(p) {}
   device_pointer_base(const std::size_t count) {
-    cl::sycl::queue default_queue = dpct::get_default_queue();
-    ptr = static_cast<ValueType *>(cl::sycl::malloc_device(
+    sycl::queue default_queue = dpct::get_default_queue();
+    ptr = static_cast<ValueType *>(sycl::malloc_device(
         count, default_queue.get_device(), default_queue.get_context()));
   }
   device_pointer_base() {}
@@ -526,11 +554,12 @@ public:
 // DPCT_DEPENDENCY_BEGIN
 // DplExtrasMemory|is_hetero_iterator
 // DplExtrasMemory|device_iterator_forward_decl_device_pointer
+// DplExtrasMemory|__buffer_allocator
 // DPCT_DEPENDENCY_END
 // DPCT_CODE
 #ifdef DPCT_USM_LEVEL_NONE
 template <typename T, sycl::access_mode Mode = sycl::access_mode::read_write,
-          typename Allocator = sycl::buffer_allocator>
+          typename Allocator = detail::__buffer_allocator<T>>
 class device_iterator : public device_pointer<T, Mode, Allocator> {
   using Base = device_pointer<T, Mode, Allocator>;
 
@@ -547,7 +576,7 @@ public:
   device_iterator() : Base() {}
   device_iterator(sycl::buffer<T, 1, Allocator> vec, std::size_t index)
       : Base(vec, index) {}
-  template <cl::sycl::access_mode inMode>
+  template <sycl::access_mode inMode>
   device_iterator(const device_iterator<T, inMode, Allocator> &in)
       : Base(in.buffer, in.idx) {} // required for iter_mode
   device_iterator &operator=(const device_iterator &in) {
@@ -637,11 +666,11 @@ public:
   using is_hetero = std::false_type;         // required
   using is_passed_directly = std::true_type; // required
   static constexpr sycl::access_mode mode =
-      cl::sycl::access_mode::read_write; // required
+      sycl::access_mode::read_write; // required
 
   device_iterator() : Base(nullptr), idx(0) {}
   device_iterator(T *vec, std::size_t index) : Base(vec), idx(index) {}
-  template <cl::sycl::access_mode inMode>
+  template <sycl::access_mode inMode>
   device_iterator(const device_iterator<T> &in)
       : Base(in.ptr), idx(in.idx) {} // required for iter_mode
   device_iterator &operator=(const device_iterator &in) {

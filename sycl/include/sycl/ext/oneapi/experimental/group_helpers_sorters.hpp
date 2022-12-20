@@ -8,14 +8,12 @@
 
 #pragma once
 
-#if __cplusplus >= 201703L && (!defined(_HAS_STD_BYTE) || _HAS_STD_BYTE != 0)
-#include <CL/sycl/detail/group_sort_impl.hpp>
+#if (!defined(_HAS_STD_BYTE) || _HAS_STD_BYTE != 0)
+#include <sycl/detail/group_sort_impl.hpp>
 
-__SYCL_INLINE_NAMESPACE(cl) {
 namespace sycl {
-namespace ext {
-namespace oneapi {
-namespace experimental {
+__SYCL_INLINE_VER_NAMESPACE(_V1) {
+namespace ext::oneapi::experimental {
 
 // ---- group helpers
 template <typename Group, std::size_t Extent> class group_with_scratchpad {
@@ -53,7 +51,7 @@ public:
     (void)first;
     (void)last;
     throw sycl::exception(
-        std::error_code(PI_INVALID_DEVICE, sycl::sycl_category()),
+        std::error_code(PI_ERROR_INVALID_DEVICE, sycl::sycl_category()),
         "default_sorter constructor is not supported on host device.");
 #endif
   }
@@ -62,8 +60,7 @@ public:
 #ifdef __SYCL_DEVICE_ONLY__
     auto range_size = g.get_local_range().size();
     if (scratch_size >= memory_required<T>(Group::fence_scope, range_size)) {
-      auto id = sycl::detail::Builder::getNDItem<Group::dimensions>();
-      std::size_t local_id = id.get_local_linear_id();
+      std::size_t local_id = g.get_local_linear_id();
       T *temp = reinterpret_cast<T *>(scratch);
       ::new (temp + local_id) T(val);
       sycl::detail::merge_sort(g, temp, range_size, comp,
@@ -74,7 +71,7 @@ public:
 #else
     (void)g;
     throw sycl::exception(
-        std::error_code(PI_INVALID_DEVICE, sycl::sycl_category()),
+        std::error_code(PI_ERROR_INVALID_DEVICE, sycl::sycl_category()),
         "default_sorter operator() is not supported on host device.");
 #endif
     return val;
@@ -93,9 +90,7 @@ public:
   }
 };
 
-} // namespace experimental
-} // namespace oneapi
-} // namespace ext
+} // namespace ext::oneapi::experimental
+} // __SYCL_INLINE_VER_NAMESPACE(_V1)
 } // namespace sycl
-} // __SYCL_INLINE_NAMESPACE(cl)
-#endif // __cplusplus >=201703L
+#endif
