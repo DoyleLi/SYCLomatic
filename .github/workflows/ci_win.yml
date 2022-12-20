@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
 
-        steps:
+    steps:
       - uses: actions/checkout@v2
         with:
           path: c2s.src
