@@ -13,7 +13,7 @@ env:
 jobs:
   windows-build-lit:
     name: windows-build-lit
-    if: true && github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false
     runs-on: win_build_sc
     outputs:
       build_success: ${{ steps.Echo-Build-Success.outputs.build_success }}
