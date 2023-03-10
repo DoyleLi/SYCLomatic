@@ -163,11 +163,10 @@ jobs:
      
   windows-test:
     name: windows-test-${{ matrix.test_suite }}-cpu
-    if: github.event.pull_request.draft == false
     runs-on: win_build_sc
     needs: [windows-build-lit]
     if: |
-      needs.windows-build-lit.outputs.build_success == 'true'
+      needs.windows-build-lit.outputs.build_success == 'true' && github.event.pull_request.draft == false
 
     strategy:
       fail-fast: false
