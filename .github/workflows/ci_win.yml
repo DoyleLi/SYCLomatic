@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - SYCLomatic
+    types: [opened, synchronize, reopened, ready_for_review]
 
 env:
   BUILD_CONCURRENCY: 2
