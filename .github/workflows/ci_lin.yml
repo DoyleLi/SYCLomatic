@@ -158,7 +158,6 @@ jobs:
               echo "::add-mask::$mask_value"; 
           done
       - name: Run testing option_usmnone_cpu
-        if: matrix.test_suite != 'help_function' && matrix.test_suite != 'help_function'
         if: success() || failure() &&  matrix.test_suite != "help_function" && matrix.test_suite != "features-usm"
         env:
           SUITE: ${{ matrix.test_suite }}
