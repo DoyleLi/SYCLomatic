@@ -165,7 +165,7 @@ jobs:
         shell: bash
         run: |
           cd test_repo
-          echo ${{ matrix.test_suit }}
+          echo ${{ matrix.test_suite }}
           echo $PWD
 
 
