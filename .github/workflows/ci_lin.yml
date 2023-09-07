@@ -81,8 +81,8 @@ jobs:
           #    cd c2s.src/build
           #    ninja install-c2s
 
-          - id: Echo-Build-Success
-            run: echo "::set-output name=build_success::true"
+      - id: Echo-Build-Success
+        run: echo "::set-output name=build_success::true"
 
           #- name: Pack Results
           #  run: tar -cJf c2s_obj.tar.xz -C $GITHUB_WORKSPACE/c2s.obj ./
