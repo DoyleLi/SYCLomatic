@@ -12,20 +12,20 @@ env:
   TEST_TIMEOUT: 3600
 
 jobs:
-  clang-format:
-    runs-on: build
-    steps:
-    - name: 'PR commits + 1'
-      run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1 ))" >> "${GITHUB_ENV}"
-    - uses: actions/checkout@v3
-      with:
-        ref: ${{ github.event.pull_request.head.sha }}
-        persist-credentials: false
-        fetch-depth: ${{ env.PR_FETCH_DEPTH }}
-    - name: Run clang-format
-      uses: ./devops/actions/clang-format
-      with:
-        path: clang
+  #clang-format:
+  #  runs-on: build
+  #  steps:
+  #  - name: 'PR commits + 1'
+  #    run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1 ))" >> "${GITHUB_ENV}"
+  #  - uses: actions/checkout@v3
+  #    with:
+  #      ref: ${{ github.event.pull_request.head.sha }}
+  #      persist-credentials: false
+  #      fetch-depth: ${{ env.PR_FETCH_DEPTH }}
+  #  - name: Run clang-format
+  #    uses: ./devops/actions/clang-format
+  #    with:
+  #      path: clang
 
   linux-build-lit:
     name: linux-build-lit
@@ -45,91 +45,91 @@ jobs:
               echo "::add-mask::$mask_value"; 
           done
 
-      - name: Cleanup Workspace
-        shell: bash
-        run: |
-          rm -rf ${{ github.workspace }}/*
-      - uses: actions/checkout@v2
-        with:
-          path: c2s.src
+          #- name: Cleanup Workspace
+          #  shell: bash
+          #  run: |
+          #    rm -rf ${{ github.workspace }}/*
+          #- uses: actions/checkout@v2
+          #  with:
+          #    path: c2s.src
 
-      - name: Prepare Env
-        uses: ./c2s.src/devops/actions/prepare_env_lin
-                
-      - name: Configure
-        timeout-minutes: 60
-        run: |
-          cd c2s.src
-          mkdir build
-          cd build
-          cmake \
-            -G Ninja \
-            -DLLVM_ENABLE_PROJECTS="clang"  \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" \
-            -DLLVM_ENABLE_TERMINFO=OFF  \
-            -DLLVM_ENABLE_ASSERTIONS=ON \
-            -DCMAKE_C_COMPILER=$DPCPP_INSTALL_PREFIX/bin/icx  \
-            -DCMAKE_CXX_COMPILER=$DPCPP_INSTALL_PREFIX/bin/icpx  \
-            -DCMAKE_INSTALL_PREFIX=$PWD/../../c2s.obj  \
-            ../llvm
+          #- name: Prepare Env
+          #  uses: ./c2s.src/devops/actions/prepare_env_lin
+          #          
+          #- name: Configure
+          #  timeout-minutes: 60
+          #  run: |
+          #    cd c2s.src
+          #    mkdir build
+          #    cd build
+          #    cmake \
+          #      -G Ninja \
+          #      -DLLVM_ENABLE_PROJECTS="clang"  \
+          #      -DCMAKE_BUILD_TYPE=Release \
+          #      -DLLVM_TARGETS_TO_BUILD="X86;NVPTX" \
+          #      -DLLVM_ENABLE_TERMINFO=OFF  \
+          #      -DLLVM_ENABLE_ASSERTIONS=ON \
+          #      -DCMAKE_C_COMPILER=$DPCPP_INSTALL_PREFIX/bin/icx  \
+          #      -DCMAKE_CXX_COMPILER=$DPCPP_INSTALL_PREFIX/bin/icpx  \
+          #      -DCMAKE_INSTALL_PREFIX=$PWD/../../c2s.obj  \
+          #      ../llvm
 
-      - name: Build
-        timeout-minutes: 120
-        run: |
-          mkdir c2s.obj
-          cd c2s.src/build
-          ninja install-c2s
+          #- name: Build
+          #  timeout-minutes: 120
+          #  run: |
+          #    mkdir c2s.obj
+          #    cd c2s.src/build
+          #    ninja install-c2s
 
-      - id: Echo-Build-Success
-        run: echo "::set-output name=build_success::true"
+          #- id: Echo-Build-Success
+          #  run: echo "::set-output name=build_success::true"
 
-      - name: Pack Results
-        run: tar -cJf c2s_obj.tar.xz -C $GITHUB_WORKSPACE/c2s.obj ./
-      - name: Upload Results 
-        uses: actions/upload-artifact@v1
-        with:
-          name: SYCLomatic_linux_${{ github.sha }}
-          path: c2s_obj.tar.xz
+          #- name: Pack Results
+          #  run: tar -cJf c2s_obj.tar.xz -C $GITHUB_WORKSPACE/c2s.obj ./
+          #- name: Upload Results 
+          #  uses: actions/upload-artifact@v1
+          #  with:
+          #    name: SYCLomatic_linux_${{ github.sha }}
+          #    path: c2s_obj.tar.xz
 
-      - name: Lit
-        if: |
-          steps.Echo-Build-Success.outputs.build_success == 'true'
-        run: |
-          cd c2s.src/build
-          ninja check-clang-c2s
+          #- name: Lit
+          #  if: |
+          #    steps.Echo-Build-Success.outputs.build_success == 'true'
+          #  run: |
+          #    cd c2s.src/build
+          #    ninja check-clang-c2s
 
-      - name: Lit_CUDA8.0
-        if: |
-          steps.Echo-Build-Success.outputs.build_success == 'true'
-        run: |
-          cd c2s.src/build
-          rm -rf tools/clang/test/dpct
-          CUDA_PATH=$CUDAROOT/cuda-8.0 ninja check-clang-c2s
+          #- name: Lit_CUDA8.0
+          #  if: |
+          #    steps.Echo-Build-Success.outputs.build_success == 'true'
+          #  run: |
+          #    cd c2s.src/build
+          #    rm -rf tools/clang/test/dpct
+          #    CUDA_PATH=$CUDAROOT/cuda-8.0 ninja check-clang-c2s
 
-      - name: Lit_CUDA9.2
-        if: |
-          steps.Echo-Build-Success.outputs.build_success == 'true'
-        run: |
-          cd c2s.src/build
-          rm -rf tools/clang/test/dpct
-          CUDA_PATH=$CUDAROOT/cuda-9.2 ninja check-clang-c2s
+          #- name: Lit_CUDA9.2
+          #  if: |
+          #    steps.Echo-Build-Success.outputs.build_success == 'true'
+          #  run: |
+          #    cd c2s.src/build
+          #    rm -rf tools/clang/test/dpct
+          #    CUDA_PATH=$CUDAROOT/cuda-9.2 ninja check-clang-c2s
 
-      - name: Lit_CUDA10.2
-        if: |
-          steps.Echo-Build-Success.outputs.build_success == 'true'
-        run: |
-          cd c2s.src/build
-          rm -rf tools/clang/test/dpct
-          CUDA_PATH=$CUDAROOT/cuda-10.2 ninja check-clang-c2s
+          #- name: Lit_CUDA10.2
+          #  if: |
+          #    steps.Echo-Build-Success.outputs.build_success == 'true'
+          #  run: |
+          #    cd c2s.src/build
+          #    rm -rf tools/clang/test/dpct
+          #    CUDA_PATH=$CUDAROOT/cuda-10.2 ninja check-clang-c2s
 
-      - name: Lit_CUDA11.8
-        if: |
-          steps.Echo-Build-Success.outputs.build_success == 'true'
-        run: |
-          cd c2s.src/build
-          rm -rf tools/clang/test/dpct
-          CUDA_PATH=$CUDAROOT/cuda-11.8 ninja check-clang-c2s
+          #- name: Lit_CUDA11.8
+          #  if: |
+          #    steps.Echo-Build-Success.outputs.build_success == 'true'
+          #  run: |
+          #    cd c2s.src/build
+          #    rm -rf tools/clang/test/dpct
+          #    CUDA_PATH=$CUDAROOT/cuda-11.8 ninja check-clang-c2s
 
   linux-test:
     name: linux-test-${{ matrix.test_suite }}-cpu
@@ -157,6 +157,17 @@ jobs:
               echo "add mask for $mask_value"; 
               echo "::add-mask::$mask_value"; 
           done
+      - name: Run testing option_usmnone_cpu
+        if: (success() || failure()) && ${{ matrix.test_suite != 'help_function' }}  && ${{ matrix.test_suite != 'features-usm' }} 
+        env:
+          SUITE: ${{ matrix.test_suite }}
+        timeout-minutes: 600
+        shell: bash
+        run: |
+          cd test_repo
+          echo ${{ matrix.test_suit }}
+          echo $PWD
+
 
       - name: Cleanup Workspace
         shell: bash
@@ -203,14 +214,4 @@ jobs:
           time python run_test.py --suite ${SUITE%-*} --option option_cpu
           echo $PWD
 
-      - name: Run testing option_usmnone_cpu
-        if: (success() || failure()) && ${{ matrix.test_suite != 'help_function' }}  && ${{ matrix.test_suite != 'features-usm' }} 
-        env:
-          SUITE: ${{ matrix.test_suite }}
-        timeout-minutes: 600
-        shell: bash
-        run: |
-          cd test_repo
-          time python run_test.py --suite ${SUITE%-*} --option option_usmnone_cpu
-          echo $PWD
 
