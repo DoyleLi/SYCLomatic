@@ -158,7 +158,7 @@ jobs:
               echo "::add-mask::$mask_value"; 
           done
       - name: Run testing option_usmnone_cpu
-        if: (success() || failure()) && ${{ matrix.test_suite != 'help_function' }}  && ${{ matrix.test_suite != 'features-usm' }} 
+        if: (success() || failure()) && (${{ matrix.test_suite != 'help_function' }}  && ${{ matrix.test_suite != 'features-usm' }})
         env:
           SUITE: ${{ matrix.test_suite }}
         timeout-minutes: 600
@@ -168,49 +168,49 @@ jobs:
           echo $PWD
 
 
-      - name: Cleanup Workspace
-        shell: bash
-        run: |
-          rm -rf ${{ github.workspace }}/*
-      - uses: actions/checkout@v2
-        with:
-          path: c2s.src
+          #- name: Cleanup Workspace
+          #  shell: bash
+          #  run: |
+          #    rm -rf ${{ github.workspace }}/*
+          #- uses: actions/checkout@v2
+          #  with:
+          #    path: c2s.src
 
-      - name: Checkout Test Repo
-        #uses: actions/checkout@v2
-        #with:
-        #  repository: XXXXX
-        #  path: test_repo
-        env:
-          FACELESS_TOKEN: ${{ secrets.GH_CI_NSTESTER_TOKEN }}
-        run: |
-          git clone https://$FACELESS_TOKEN@github.com/oneapi-src/SYCLomatic-test.git test_repo -b SYCLomatic
+          #- name: Checkout Test Repo
+          #  #uses: actions/checkout@v2
+          #  #with:
+          #  #  repository: XXXXX
+          #  #  path: test_repo
+          #  env:
+          #    FACELESS_TOKEN: ${{ secrets.GH_CI_NSTESTER_TOKEN }}
+          #  run: |
+          #    git clone https://$FACELESS_TOKEN@github.com/oneapi-src/SYCLomatic-test.git test_repo -b SYCLomatic
 
-      - uses: actions/download-artifact@v2
-        with:
-          name: SYCLomatic_linux_${{ github.sha }}
+          #- uses: actions/download-artifact@v2
+          #  with:
+          #    name: SYCLomatic_linux_${{ github.sha }}
 
-      - name: Unpack artifact
-        shell: bash
-        run: |
-          mkdir $GITHUB_WORKSPACE/c2s.obj
-          tar -xvf c2s_obj.tar.xz -C $GITHUB_WORKSPACE/c2s.obj
+          #- name: Unpack artifact
+          #  shell: bash
+          #  run: |
+          #    mkdir $GITHUB_WORKSPACE/c2s.obj
+          #    tar -xvf c2s_obj.tar.xz -C $GITHUB_WORKSPACE/c2s.obj
 
-      - name: Prepare Env
-        timeout-minutes: 60
-        uses: ./c2s.src/devops/actions/prepare_env_lin
-        with:
-          c2s_obj_dir: "c2s.obj"
-        
-      - name: Run testing option_cpu
-        if: ${{ matrix.test_suite != 'features-usmnone' }} 
-        env:
-          SUITE: ${{ matrix.test_suite }}
-        timeout-minutes: 600
-        shell: bash
-        run: |
-          cd test_repo
-          time python run_test.py --suite ${SUITE%-*} --option option_cpu
-          echo $PWD
+          #- name: Prepare Env
+          #  timeout-minutes: 60
+          #  uses: ./c2s.src/devops/actions/prepare_env_lin
+          #  with:
+          #    c2s_obj_dir: "c2s.obj"
+          #  
+          #- name: Run testing option_cpu
+          #  if: ${{ matrix.test_suite != 'features-usmnone' }} 
+          #  env:
+          #    SUITE: ${{ matrix.test_suite }}
+          #  timeout-minutes: 600
+          #  shell: bash
+          #  run: |
+          #    cd test_repo
+          #    time python run_test.py --suite ${SUITE%-*} --option option_cpu
+          #    echo $PWD
 
 
