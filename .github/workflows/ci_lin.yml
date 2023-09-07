@@ -164,7 +164,6 @@ jobs:
         timeout-minutes: 600
         shell: bash
         run: |
-          cd test_repo
           echo ${{ matrix.test_suite }}
           echo $PWD
 
