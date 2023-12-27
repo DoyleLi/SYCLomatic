@@ -9,14 +9,16 @@ runs:
       pattern_to_exclude_from_clang=".*clang/test/dpct"
       allfiles=`git diff --name-only`
       files_array=($allfiles)
-      for i in "${!files_array[@]}":
+      
+      for i in "${!files_array[@]}"
       do
-         if [[ "${files_array[$i]}" =~ $pattern_to_exclude_from_clang ]];then
-             printf "%s %s" "${files_array[$i]" "this file will be skipped by clang"
+         if [[ "${files_array[$i]}" =~ ${pattern_to_exclude_from_clang} ]];then
+             echo "${files_array[$i]} will be excluded from format checking"
              unset files_array[$i]
          fi
       done
-      git clang-format ${allfiles[@]}
+ 
+      git clang-format ${files_array[@]}
       git diff > ./clang-format.patch
   # Add patch with formatting fixes to CI job artifacts
   - uses: actions/upload-artifact@v1
