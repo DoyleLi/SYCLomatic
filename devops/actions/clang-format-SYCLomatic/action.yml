@@ -9,6 +9,7 @@ runs:
       pattern_to_exclude_from_clang=".*clang/test/dpct"
       allfiles=`git diff --name-only`
       files_array=($allfiles)
+      echo "changed files are $files_array"
       
       for i in "${!files_array[@]}"
       do
