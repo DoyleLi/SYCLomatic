@@ -6,7 +6,17 @@ runs:
   - name: Run clang-format for the patch
     shell: bash {0}
     run: |
-      git clang-format ${{ github.event.pull_request.base.sha }}
+      pattern_to_exclude_from_clang=".*clang/test/dpct"
+      allfiles=`git diff --name-only`
+      files_array=($allfiles)
+      for i in "${!files_array[@]}":
+      do
+         if [[ "${files_array[$i]}" =~ $pattern_to_exclude_from_clang ]];then
+             printf "%s %s" "${files_array[$i]" "this file will be skipped by clang"
+             unset files_array[$i]
+         fi
+      done
+      git clang-format ${allfiles[@]}
       git diff > ./clang-format.patch
   # Add patch with formatting fixes to CI job artifacts
   - uses: actions/upload-artifact@v1
