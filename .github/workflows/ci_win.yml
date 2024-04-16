@@ -153,7 +153,6 @@ jobs:
         timeout-minutes: 120
         run: |
           cd c2s.src
-          cp -rf ../build ./ 
           cd build
           cmake \
             -G Ninja \
