@@ -1,0 +1,24 @@
+name: Differential analysis
+on: [pull_request]                              # define list of triggers on which the scan shall be performed
+
+jobs:
+  differential_analysis:
+    runs-on: coverity                        # defines an action-runner label to specify what machine should be used
+
+    steps:
+      - name: "Clone SampleCode repository"
+        uses: actions/checkout@v2
+        with:
+          repository: DoyleLi/SYCLomatic
+          path: ./
+          ref: SYCLomatic
+          token: ${{ secrets.ACTIONS_TOKEN }}   # PAT token (may be registered as a repository secred) needed to access the action repository
+          
+      - name: "Fetch Action for DiffAnalysis"
+        uses: actions/checkout@v2
+        with:
+          repository: intel-innersource/applications.security.pull-request-differential-analysis
+          path: ./.actions
+          ref: main
+          token: ${{ secrets.ACTIONS_TOKEN }}   # PAT token (may be registered as a repository secred) needed to access the action repository
+        
