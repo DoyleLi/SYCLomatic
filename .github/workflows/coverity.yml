@@ -17,9 +17,9 @@ jobs:
       - name: "Fetch Action for DiffAnalysis"
         uses: actions/checkout@v2
         with:
-          repository: intel-innersource/applications.security.pull-request-differential-analysis
+          repository: DoyleLi/applications.security.pull-request-differential-analysis
           path: ./.actions
-          ref: main
+          ref: compiler_syclomatic 
           token: ${{ secrets.ACTIONS_TOKEN }}   # PAT token (may be registered as a repository secred) needed to access the action repository
         
       - name: "Run analysis"
