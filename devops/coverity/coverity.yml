@@ -28,7 +28,7 @@ jobs:
           prNumber: ${{ github.event.number}}   # GitHub pull request number will be propagated to the action via this variable
           personalAccessToken: ${{ secrets.ACTIONS_TOKEN }} 
                                                 # PAT token (may be registered as a repository secred) needed for the application have access to the project to scan 
-          configPath: ./devops/coverity/coverity.yml                # Path to the locally available configuration file
+          configPath: ./                # Path to the locally available configuration file
                       
       - name: 'Archive log file'                # If needed, we may collect log file from the job execution
         uses: actions/upload-artifact@v2
