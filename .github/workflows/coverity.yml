@@ -21,6 +21,12 @@ jobs:
           path: ./.actions
           ref: compiler_syclomatic 
           token: ${{ secrets.ACTIONS_TOKEN }}   # PAT token (may be registered as a repository secred) needed to access the action repository
+
+      - name: "Prepare Folders"
+        path: ./.actions
+        run: |
+          rm -rf cov-result
+          mkdir cov-result
         
       - name: "Run analysis"
         uses: ./.actions/actions/linux          # Use <PATH>/actions/linux or <PATH>/actions/windows to get version supported for desired OS 
