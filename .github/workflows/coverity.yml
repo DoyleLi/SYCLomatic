@@ -23,8 +23,8 @@ jobs:
           token: ${{ secrets.ACTIONS_TOKEN }}   # PAT token (may be registered as a repository secred) needed to access the action repository
 
       - name: "Prepare Folders"
-        path: ./.actions
         run: |
+          cd ./.actions
           rm -rf cov-result
           mkdir cov-result
         
