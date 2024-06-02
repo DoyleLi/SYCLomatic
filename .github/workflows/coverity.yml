@@ -1,0 +1,44 @@
+name: Differential analysis
+on: [pull_request]                              # define list of triggers on which the scan shall be performed
+
+jobs:
+  differential_analysis:
+    runs-on: coverity                        # defines an action-runner label to specify what machine should be used
+
+    steps:
+      - name: "Clone SampleCode repository"
+        uses: actions/checkout@v2
+        with:
+          repository: DoyleLi/SYCLomatic
+          path: ./
+          ref: SYCLomatic
+          token: ${{ secrets.ACTIONS_TOKEN }}   # PAT token (may be registered as a repository secred) needed to access the action repository
+          
+      - name: "Fetch Action for DiffAnalysis"
+        uses: actions/checkout@v2
+        with:
+          repository: DoyleLi/applications.security.pull-request-differential-analysis
+          path: ./.actions
+          ref: compiler_syclomatic 
+          token: ${{ secrets.ACTIONS_TOKEN }}   # PAT token (may be registered as a repository secred) needed to access the action repository
+
+      - name: "Prepare Folders"
+        run: |
+          cd ./.actions
+          rm -rf cov-result
+          mkdir cov-result
+        
+      - name: "Run analysis"
+        uses: ./.actions/actions/linux          # Use <PATH>/actions/linux or <PATH>/actions/windows to get version supported for desired OS 
+        with:
+          prNumber: ${{ github.event.number}}   # GitHub pull request number will be propagated to the action via this variable
+          personalAccessToken: ${{ secrets.ACTIONS_TOKEN }} 
+                                                # PAT token (may be registered as a repository secred) needed for the application have access to the project to scan 
+          configPath: ../../../../../coverity_tool/coverity_config.yml               # Path to the locally available configuration file
+          tool: coverity
+                      
+      - name: 'Archive log file'                # If needed, we may collect log file from the job execution
+        uses: actions/upload-artifact@v2
+        with:
+          name: log_file
+          path: DifferentialAnalysis/*.log
