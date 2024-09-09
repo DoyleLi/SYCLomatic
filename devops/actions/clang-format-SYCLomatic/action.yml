@@ -6,8 +6,12 @@ runs:
   - name: Run clang-format for the patch
     shell: bash {0}
     run: |
+      base=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+      git log -1 HEAD
+      git log -1 $base
+
       pattern_to_exclude_from_clang=".*clang/test/dpct"
-      allfiles=`git diff --name-only ${{ github.event.pull_request.base.sha }}`
+      allfiles=`git diff --name-only $base`
       files_array=($allfiles)
       echo "changed files are $files_array"
       
