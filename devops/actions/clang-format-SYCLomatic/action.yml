@@ -3,25 +3,44 @@ description: 'Run clang-format on pull request'
 runs:
   using: "composite"
   steps:
-  - name: Run clang-format for the patch
-    shell: bash {0}
-    run: |
-      pattern_to_exclude_from_clang=".*clang/test/dpct"
-      echo "base sha value is ${{ github.event.pull_request.base.sha }}"
-      allfiles=`git diff --name-only ${{ github.event.pull_request.base.sha }}`
-      files_array=($allfiles)
-      echo "changed files are $files_array"
-      
-      for i in "${!files_array[@]}"
-      do
-         if [[ "${files_array[$i]}" =~ ${pattern_to_exclude_from_clang} ]];then
-             echo "${files_array[$i]} will be excluded from format checking"
-             unset files_array[$i]
-         fi
-      done
+    - name: Checkout through merge base
+      uses: rmacklin/fetch-through-merge-base@v0
+      with:
+        base_ref: ${{ github.event.pull_request.base.ref }}
+        head_ref: ${{ github.event.pull_request.head.sha }}
+        deepen_length: 100
+
+    - name: Get changed files
+      id: changed-files
+      uses: tj-actions/changed-files@v44
+      with:
+        separator: ","
+        skip_initial_fetch: true
+    - name: "Listed files"
+      env:
+        CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+      run: |
+        echo "Formatting files:"
+        echo "$CHANGED_FILES"
+    #- name: Run clang-format for the patch
+    #  shell: bash {0}
+    #  run: |
+    #    pattern_to_exclude_from_clang=".*clang/test/dpct"
+    #    echo "base sha value is ${{ github.event.pull_request.base.sha }}"
+    #    allfiles=`git diff --name-only ${{ github.event.pull_request.base.sha }}`
+    #    files_array=($allfiles)
+    #    echo "changed files are $files_array"
+    #    
+    #    for i in "${!files_array[@]}"
+    #    do
+    #       if [[ "${files_array[$i]}" =~ ${pattern_to_exclude_from_clang} ]];then
+    #           echo "${files_array[$i]} will be excluded from format checking"
+    #           unset files_array[$i]
+    #       fi
+    #    done
  
-      git clang-format ${{ github.event.pull_request.base.sha }} ${files_array[@]}
-      git diff > ./clang-format.patch
+    #    git clang-format ${{ github.event.pull_request.base.sha }} ${files_array[@]}
+    #    git diff > ./clang-format.patch
   # Add patch with formatting fixes to CI job artifacts
   - uses: actions/upload-artifact@v4
     with:
