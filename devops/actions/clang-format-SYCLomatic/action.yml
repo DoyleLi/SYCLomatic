@@ -16,7 +16,8 @@ runs:
       with:
         separator: ","
         skip_initial_fetch: true
-    - name: "Listed files"
+
+    - name: List Files
       env:
         CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
       run: |
