@@ -35,7 +35,15 @@ runs:
  
          git clang-format ${{ github.event.pull_request.base.sha }} ${files_array[@]}
          git diff > ./clang-format.patch
-    #- name: Run clang-format for the patch
+      # Add patch with formatting fixes to CI job artifacts
+    - uses: actions/upload-artifact@v4
+      with:
+        name: clang-format-patch
+        path: ./clang-format.patch
+    - name: Check if clang-format patch is empty
+      shell: bash
+      run: bash -c "if [ -s ./clang-format.patch ]; then cat ./clang-format.patch; exit 1; fi"
+#- name: Run clang-format for the patch
     #  shell: bash {0}
     #  run: |
     #    pattern_to_exclude_from_clang=".*clang/test/dpct"
@@ -54,12 +62,4 @@ runs:
  
     #    git clang-format ${{ github.event.pull_request.base.sha }} ${files_array[@]}
     #    git diff > ./clang-format.patch
-  # Add patch with formatting fixes to CI job artifacts
-  #- uses: actions/upload-artifact@v4
-  #  with:
-  #    name: clang-format-patch
-  #    path: ./clang-format.patch
-  #- name: Check if clang-format patch is empty
-  #  shell: bash
-  #  run: bash -c "if [ -s ./clang-format.patch ]; then cat ./clang-format.patch; exit 1; fi"
 
