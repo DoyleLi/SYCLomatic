@@ -18,6 +18,7 @@ runs:
         skip_initial_fetch: true
 
     - name: List Files
+      shell: bash
       env:
         CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
       run: |
