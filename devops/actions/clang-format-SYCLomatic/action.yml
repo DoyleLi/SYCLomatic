@@ -23,17 +23,20 @@ runs:
         CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
       run: |
          files_array=(${CHANGED_FILES})
+         files_to_be_check=""
          echo "changed files are $files_array"
          
-         for i in "${!files_array[@]}"
+         for i in "${files_array}"
          do
-            if [[ "${files_array[$i]}" =~ ${pattern_to_exclude_from_clang} ]];then
-                echo "${files_array[$i]} will be excluded from format checking"
-                unset files_array[$i]
+            if [[ "$i" =~ ${pattern_to_exclude_from_clang} ]];then
+                echo "${i} will be excluded from format checking"
+            else
+                files_to_be_check="${files_to_be_check} $i" 
             fi
+
          done
  
-         git clang-format ${{ github.event.pull_request.base.sha }} ${files_array[@]}
+         git clang-format ${{ github.event.pull_request.base.sha }} ${files_array}
          git diff > ./clang-format.patch
       # Add patch with formatting fixes to CI job artifacts
     - uses: actions/upload-artifact@v4
